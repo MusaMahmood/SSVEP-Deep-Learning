@@ -1,4 +1,10 @@
-DATA/
 Tensorflow/_data/
 Keras/.idea/
 Tensorflow/.idea/
+*.mat
+*.zip
+*.rar
+*.7z
+*.asv
+DATA/liblsl-Matlab/
+*.csv
