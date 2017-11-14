@@ -50,51 +50,68 @@ classdef Session < handle
             S.sessions{1,1,1} = 'S001a';
             S.sessions{1,1,2} = 'S001b';
             S.sessions{1,1,3} = 'S001c';
+            S.sessions{1,1,4} = 'NULL';
+            S.sessions{1,1,5} = 'NULL';
+            
             S.sessions{1,2,1} = 'S002a';
             S.sessions{1,2,2} = 'S002b';
             S.sessions{1,2,3} = 'S002c';
             S.sessions{1,2,4} = 'S002d';
             S.sessions{1,2,5} = 'S002e';
+            
             S.sessions{1,3,1} = 'S003a';
             S.sessions{1,3,2} = 'S003b';
             S.sessions{1,3,3} = 'S003c';
+            S.sessions{1,3,4} = 'NULL';
+            S.sessions{1,3,5} = 'NULL';
+            
             S.sessions{1,4,1} = 'S004a';
             S.sessions{1,4,2} = 'S004b';
             S.sessions{1,4,3} = 'S004c';
             S.sessions{1,4,4} = 'S004d';
+            S.sessions{1,4,5} = 'NULL';
+            
             S.sessions{1,5,1} = 'S005a';
             S.sessions{1,5,2} = 'S005b';
             S.sessions{1,5,3} = 'S005c';
             S.sessions{1,5,4} = 'S005d';
             S.sessions{1,5,5} = 'S005e';
+            
             S.sessions{1,6,1} = 'S006a';
             S.sessions{1,6,2} = 'S006b';
             S.sessions{1,6,3} = 'S006c';
             S.sessions{1,6,4} = 'S006d';
             S.sessions{1,6,5} = 'S006e';
+            
             S.sessions{1,7,1} = 'S007a';
             S.sessions{1,7,2} = 'S007b';
             S.sessions{1,7,3} = 'S007c';
             S.sessions{1,7,4} = 'S007d';
             S.sessions{1,7,5} = 'S007e';
+            
             S.sessions{1,8,1} = 'S008a';
             S.sessions{1,8,2} = 'S008b';
             S.sessions{1,8,3} = 'S008c';
+            S.sessions{1,8,4} = 'NULL';
+            S.sessions{1,8,5} = 'NULL';
+            
             S.sessions{1,9,1} = 'S009a';
             S.sessions{1,9,2} = 'S009b';
             S.sessions{1,9,3} = 'S009c';
             S.sessions{1,9,4} = 'S009d';
             S.sessions{1,9,5} = 'S009e';
+            
             S.sessions{1,10,1} = 'S010a';
             S.sessions{1,10,2} = 'S010b';
             S.sessions{1,10,3} = 'S010c';
             S.sessions{1,10,4} = 'S010d';
             S.sessions{1,10,5} = 'S010e';
-            S.sessions{1,11,1} = 'S013a';
-            S.sessions{1,11,2} = 'S013b';
-            S.sessions{1,11,3} = 'S013c';
-            S.sessions{1,11,4} = 'S013d';
-            S.sessions{1,11,5} = 'S013e';
+            
+            S.sessions{1,11,1} = 'S011a';
+            S.sessions{1,11,2} = 'S011b';
+            S.sessions{1,11,3} = 'S011c';
+            S.sessions{1,11,4} = 'S011d';
+            S.sessions{1,11,5} = 'S011e';
             
             %Dataset II
             S.sessions{2,1,1} = 'T001a';
@@ -308,6 +325,7 @@ classdef Session < handle
                 case 1
                     %Load Dataset I (SINGLE)
                     load(S.sessions{experiment,subject,session});
+%                     if(~(S.sessions{experiment,subject,session}(1:4) == 'NULL'))
                     signal = eval('eeg');
                     numTrials = length(S.trials) + 1;
                     curTrials = S.split(signal,DIN_1,subject,session);
@@ -315,6 +333,10 @@ classdef Session < handle
                         S.trials{numTrials} = curTrials{i};
                         numTrials = numTrials + 1;
                     end
+%                     else
+%                         signal = {}
+%                     end
+                    
                 case 2
                     %Load Dataset II (MULTI)
                     load(S.sessions{experiment,subject,session});

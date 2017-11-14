@@ -6,3 +6,5 @@ Tensorflow/.idea/
 *.rar
 *.7z
 *.asv
+DATA/liblsl-Matlab/
+*.csv
