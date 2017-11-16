@@ -30,6 +30,7 @@ VAL_BATCH_SIZE = 10
 DATA_WINDOW_SIZE = 300  # TODO:
 MOVING_WINDOW_SHIFT = 60
 #
+SMALL_CHANNEL_SETUP = 2
 NUMBER_DATA_CHANNELS = 256
 NUMBER_CLASSES = 5
 SAMPLING_RATE = 250
@@ -65,7 +66,7 @@ def load_data(data_directory, letters):
 
 
 def model_input(input_node_name, keep_prob_node_name):
-    x = tf.placeholder(tf.float32, shape=[None, DATA_WINDOW_SIZE * 2], name=input_node_name)
+    x = tf.placeholder(tf.float32, shape=[None, DATA_WINDOW_SIZE, SMALL_CHANNEL_SETUP], name=input_node_name)
     keep_prob = tf.placeholder(tf.float32, name=keep_prob_node_name)
     y_ = tf.placeholder(tf.float32, shape=[None, 5])
     return x, keep_prob, y_
@@ -73,6 +74,8 @@ def model_input(input_node_name, keep_prob_node_name):
 
 # weights and bias functions for convolution
 def weight_variable(shape):
+    # Outputs random values from a truncated normal distribution:
+    # Args: shape.
     initial = tf.truncated_normal(shape, stddev=0.1)
     return tf.Variable(initial)
 
@@ -83,27 +86,36 @@ def bias_variable(shape):
 
 
 # Convolution and max-pooling functions
-def conv2d(x, Weights):
-    return tf.nn.conv2d(x, Weights, strides=[1, 1, 1, 1], padding='SAME')
+# Computes 2-D convolution given 4-D input and filter tensors
+def conv2d(x, weights):
+    return tf.nn.conv2d(x, weights, strides=[1, 1, 1, 1], padding='SAME')
 
 
 def max_pool_2x2(x):
-    return tf.nn.max_pool(x, ksize=[1, 2, 1, 1],
-                          strides=[1, 2, 1, 1], padding='SAME')
+    # Args:
+    # ksize(4-D):  The size of the window for each dimension of the input tensor.
+    # strides(4-D): The stride of the sliding window for each dimension of the input tensor.
+    return tf.nn.max_pool(x, ksize=[1, SMALL_CHANNEL_SETUP, 1, 1],
+                          strides=[1, SMALL_CHANNEL_SETUP, 1, 1], padding='SAME')
 
 
 def build_model(x, keep_prob, y, output_node_name):
-    x_input = tf.reshape(x, [-1, DATA_WINDOW_SIZE, 2, 1])
+    x_input = tf.reshape(x, [-1, DATA_WINDOW_SIZE, SMALL_CHANNEL_SETUP, 1])  # [-1, 250, 256, 1]
 
     # first convolution and pooling
-    W_conv1 = weight_variable([5, 1, 1, 32])
+    W_conv1 = weight_variable([NUMBER_CLASSES, 1, 1, 32])
     b_conv1 = bias_variable([32])
-
+    # tf.nn.relu: Computes rectified linear: max(features, 0)
+    # Args: features (a tensor)
+    print("x_input.shape", x_input.shape)
+    print("W_conv1.shape", W_conv1.shape)
     h_conv1 = tf.nn.relu(conv2d(x_input, W_conv1) + b_conv1)
+    print("1st conv layer dimensions: ", h_conv1.shape)
+    # Performs max pooling on the inputs.
     h_pool1 = max_pool_2x2(h_conv1)
-
+    print("h_pool1 output", h_pool1.shape)
     # second convolution and pooling
-    W_conv2 = weight_variable([5, 1, 32, 64])
+    W_conv2 = weight_variable([NUMBER_CLASSES, 1, 32, 64])
     b_conv2 = bias_variable([64])
 
     h_conv2 = tf.nn.relu(conv2d(h_pool1, W_conv2) + b_conv2)
@@ -157,7 +169,7 @@ def moving_window(data, length, step):
 
 def train_and_test(training_data, test_data, x, keep_prob, y, train_step, accuracy, saver):
     val_step = 0
-    # split into data windows:
+    # split into data windows & store:
     data_window_list = list(moving_window(training_data, DATA_WINDOW_SIZE, MOVING_WINDOW_SHIFT))
     shape = np.asarray(data_window_list).shape
     print("dataWindowList.shape (windows, window length, columns)", shape)
@@ -170,7 +182,7 @@ def train_and_test(training_data, test_data, x, keep_prob, y, train_step, accura
                                        data_window_array[0, NUMBER_DATA_CHANNELS])
         # print("count_match: ", count_match)
         if count_match == shape[1]:
-            x_window = data_window_array[:, 0:2:1]
+            x_window = data_window_array[:, 0:SMALL_CHANNEL_SETUP:1]
             # USE SAME FILTER AS IN ANDROID (C++ filt params),
             # Will need to pass through that filter in Android before feeding to model.
             mm_scale = preprocessing.MinMaxScaler().fit(x_window)
@@ -206,8 +218,8 @@ def train_and_test(training_data, test_data, x, keep_prob, y, train_step, accura
             batch_x_train = x_train[offset:(offset + TRAIN_BATCH_SIZE)]
             shape_original = batch_x_train.shape
             # print("shape_original(batch_x_train.shape)", shape_original)
-            batch_x_train = np.reshape(batch_x_train,
-                                       (shape_original[0], shape_original[1] * shape_original[2], -1)).squeeze()
+            # batch_x_train = np.reshape(batch_x_train,
+            #                            (shape_original[0], shape_original[1] * shape_original[2], -1)).squeeze()
             # print("shape_new(batch_x_train.shape)", batch_x_train.shape)
             batch_y_train = y_train[offset:(offset + TRAIN_BATCH_SIZE)]
             if i % 10 == 0:
@@ -219,9 +231,9 @@ def train_and_test(training_data, test_data, x, keep_prob, y, train_step, accura
                 offset = (val_step * VAL_BATCH_SIZE) % (x_test.shape[0] - VAL_BATCH_SIZE)
                 batch_x_val = x_test[offset:(offset + VAL_BATCH_SIZE), :, :]
                 shape_original = batch_x_val.shape
-                batch_x_val = np.reshape(batch_x_val,
-                                         (shape_original[0], shape_original[1] * shape_original[2], -1)).squeeze()
-                # print("Reshaped: ", batch_x_val.shape)
+                # batch_x_val = np.reshape(batch_x_val,
+                #                          (shape_original[0], shape_original[1] * shape_original[2], -1)).squeeze()
+                print("batch_x_val.shape: ", batch_x_val.shape)
                 batch_y_val = y_test[offset:(offset + VAL_BATCH_SIZE), :]
                 val_accuracy = accuracy.eval(feed_dict={x: batch_x_val, y: batch_y_val, keep_prob: 1.0})
                 print("Validation step %d, validation accuracy %g" % (val_step, val_accuracy))
@@ -229,7 +241,7 @@ def train_and_test(training_data, test_data, x, keep_prob, y, train_step, accura
 
             train_step.run(feed_dict={x: batch_x_train, y: batch_y_train, keep_prob: 0.15})
         shape_original = x_test.shape
-        x_test = np.reshape(x_test, (shape_original[0], shape_original[1] * shape_original[2], -1)).squeeze()
+        # x_test = np.reshape(x_test, (shape_original[0], shape_original[1] * shape_original[2], -1)).squeeze()
         test_accuracy = sess.run(accuracy, feed_dict={x: x_test, y: y_test, keep_prob: 1.0})  # original
         # test_accuracy = sess.run(accuracy, feed_dict={x: x_test, y: y_test, keep_prob: 0.5})
         print("\n Testing Accuracy:", test_accuracy, "\n\n")
