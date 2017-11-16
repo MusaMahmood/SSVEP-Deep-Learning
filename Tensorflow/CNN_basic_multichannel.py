@@ -26,19 +26,29 @@ EXPORT_DIRECTORY = 'model_exports/' + VERSION_NUMBER + '/'
 MODEL_NAME = 'ssvep_net_14ch'
 NUMBER_STEPS = 5000
 TRAIN_BATCH_SIZE = 256
-VAL_BATCH_SIZE = 10
+VAL_BATCH_SIZE = 20
 DATA_WINDOW_SIZE = 300  # TODO:
 MOVING_WINDOW_SHIFT = 60
-#
-SMALL_CHANNEL_SETUP = 2
-NUMBER_DATA_CHANNELS = 256
+NUMBER_CHANNELS_SELECT = 16
+NUMBER_CHANNELS_TOTAL = 256
 NUMBER_CLASSES = 5
-SAMPLING_RATE = 250
-WINDOW_SECONDS = 5  # TODO:
-WINDOW_SIZE = SAMPLING_RATE * WINDOW_SECONDS
-#
-BIAS_VAR_1 = 32
-BIAS_VAR_2 = 64
+
+# FOR MODEL DESIGN
+BIAS_VAR_CL1 = 32
+BIAS_VAR_CL2 = 64
+WEIGHT_VAR_CL1 = [NUMBER_CLASSES, 1, 1, BIAS_VAR_CL1]
+WEIGHT_VAR_CL2 = [NUMBER_CLASSES, 1, BIAS_VAR_CL1, BIAS_VAR_CL2]
+MAX_POOL_KSIZE = [1, 2, 1, 1]
+MAX_POOL_STRIDE = [1, 2, 1, 1]
+
+FC_LAYER_DIMENSIONS = 75 * BIAS_VAR_CL2
+WEIGHT_VAR_FC1 = [NUMBER_CHANNELS_SELECT * FC_LAYER_DIMENSIONS, 1024]
+MAX_POOL_FLAT_SHAPE_FC1 = [-1, NUMBER_CHANNELS_SELECT * FC_LAYER_DIMENSIONS]
+BIAS_VAR_FC1 = [1024]
+BIAS_VAR_FC2 = [2048]
+WEIGHT_VAR_FC2 = [*BIAS_VAR_FC1, *BIAS_VAR_FC2]
+WEIGHT_VAR_FC_OUTPUT = [*BIAS_VAR_FC2, NUMBER_CLASSES]
+BIAS_VAR_FC_OUTPUT = [NUMBER_CLASSES]
 
 
 def get_data_directory():
@@ -47,7 +57,7 @@ def get_data_directory():
 
 
 def load_data(data_directory, letters):
-    data_array = np.empty([0, NUMBER_DATA_CHANNELS + 1], np.float32)
+    data_array = np.empty([0, NUMBER_CHANNELS_TOTAL + 1], np.float32)
     for s in letters:
         str_file_path = data_directory + "/*" + s + "*.mat"
         print(str_file_path)
@@ -66,7 +76,7 @@ def load_data(data_directory, letters):
 
 
 def model_input(input_node_name, keep_prob_node_name):
-    x = tf.placeholder(tf.float32, shape=[None, DATA_WINDOW_SIZE, SMALL_CHANNEL_SETUP], name=input_node_name)
+    x = tf.placeholder(tf.float32, shape=[None, DATA_WINDOW_SIZE, NUMBER_CHANNELS_SELECT], name=input_node_name)
     keep_prob = tf.placeholder(tf.float32, name=keep_prob_node_name)
     y_ = tf.placeholder(tf.float32, shape=[None, 5])
     return x, keep_prob, y_
@@ -91,56 +101,56 @@ def conv2d(x, weights):
     return tf.nn.conv2d(x, weights, strides=[1, 1, 1, 1], padding='SAME')
 
 
-def max_pool_2x2(x):
+def max_pool_2x2(x, ksize, stride):
     # Args:
     # ksize(4-D):  The size of the window for each dimension of the input tensor.
     # strides(4-D): The stride of the sliding window for each dimension of the input tensor.
-    return tf.nn.max_pool(x, ksize=[1, SMALL_CHANNEL_SETUP, 1, 1],
-                          strides=[1, SMALL_CHANNEL_SETUP, 1, 1], padding='SAME')
+    return tf.nn.max_pool(x, ksize=ksize,
+                          strides=stride, padding='SAME')
 
 
 def build_model(x, keep_prob, y, output_node_name):
-    x_input = tf.reshape(x, [-1, DATA_WINDOW_SIZE, SMALL_CHANNEL_SETUP, 1])  # [-1, 250, 256, 1]
+    x_input = tf.reshape(x, [-1, DATA_WINDOW_SIZE, NUMBER_CHANNELS_SELECT, 1])  # [-1, 250, 256, 1]
 
     # first convolution and pooling
-    W_conv1 = weight_variable([NUMBER_CLASSES, 1, 1, 32])
-    b_conv1 = bias_variable([32])
+    w_conv1 = weight_variable(WEIGHT_VAR_CL1)
+    b_conv1 = bias_variable([BIAS_VAR_CL1])
     # tf.nn.relu: Computes rectified linear: max(features, 0)
     # Args: features (a tensor)
     print("x_input.shape", x_input.shape)
-    print("W_conv1.shape", W_conv1.shape)
-    h_conv1 = tf.nn.relu(conv2d(x_input, W_conv1) + b_conv1)
+    print("W_conv1.shape", w_conv1.shape)
+    h_conv1 = tf.nn.relu(conv2d(x_input, w_conv1) + b_conv1)
     print("1st conv layer dimensions: ", h_conv1.shape)
     # Performs max pooling on the inputs.
-    h_pool1 = max_pool_2x2(h_conv1)
+    h_pool1 = max_pool_2x2(h_conv1, MAX_POOL_KSIZE, MAX_POOL_STRIDE)
     print("h_pool1 output", h_pool1.shape)
     # second convolution and pooling
-    W_conv2 = weight_variable([NUMBER_CLASSES, 1, 32, 64])
-    b_conv2 = bias_variable([64])
+    w_conv2 = weight_variable(WEIGHT_VAR_CL2)
+    b_conv2 = bias_variable([BIAS_VAR_CL2])
 
-    h_conv2 = tf.nn.relu(conv2d(h_pool1, W_conv2) + b_conv2)
-    h_pool2 = max_pool_2x2(h_conv2)
+    h_conv2 = tf.nn.relu(conv2d(h_pool1, w_conv2) + b_conv2)
+    h_pool2 = max_pool_2x2(h_conv2, MAX_POOL_KSIZE, MAX_POOL_STRIDE)
 
     # fully connected layer1,the shape of the patch should be defined
-    W_fc1 = weight_variable([75 * 2 * 64, 1024])
-    b_fc1 = bias_variable([1024])
+    w_fc1 = weight_variable(WEIGHT_VAR_FC1)
+    b_fc1 = bias_variable(BIAS_VAR_FC1)
 
     # the input should be shaped/flattened
-    h_pool2_flat = tf.reshape(h_pool2, [-1, 75 * 2 * 64])
-    h_fc1 = tf.nn.relu(tf.matmul(h_pool2_flat, W_fc1) + b_fc1)
+    h_pool2_flat = tf.reshape(h_pool2, MAX_POOL_FLAT_SHAPE_FC1)
+    h_fc1 = tf.nn.relu(tf.matmul(h_pool2_flat, w_fc1) + b_fc1)
 
     # fully connected layer2
-    W_fc2 = weight_variable([1024, 2048])
-    b_fc2 = bias_variable([2048])
-    h_fc2 = tf.nn.relu(tf.matmul(h_fc1, W_fc2) + b_fc2)
+    w_fc2 = weight_variable(WEIGHT_VAR_FC2)
+    b_fc2 = bias_variable(BIAS_VAR_FC2)
+    h_fc2 = tf.nn.relu(tf.matmul(h_fc1, w_fc2) + b_fc2)
 
     h_fc2_drop = tf.nn.dropout(h_fc2, keep_prob)
 
     # weight and bias of the output layer
-    W_fco = weight_variable([2048, 5])
-    b_fco = bias_variable([5])
+    w_fc_output = weight_variable(WEIGHT_VAR_FC_OUTPUT)
+    b_fc_output = bias_variable(BIAS_VAR_FC_OUTPUT)
 
-    y_conv = tf.matmul(h_fc2_drop, W_fco) + b_fco
+    y_conv = tf.matmul(h_fc2_drop, w_fc_output) + b_fc_output
     outputs = tf.nn.softmax(y_conv, name=output_node_name)
 
     # training and reducing the cost/loss function
@@ -178,17 +188,17 @@ def train_and_test(training_data, test_data, x, keep_prob, y, train_step, accura
     for data_window in data_window_list:
         data_window_array = np.asarray(data_window)
         # TODO: Replace 2 & other constants with NUMBER_DATA_CHANNELS as needed
-        count_match = np.count_nonzero(data_window_array[:, NUMBER_DATA_CHANNELS] ==
-                                       data_window_array[0, NUMBER_DATA_CHANNELS])
+        count_match = np.count_nonzero(data_window_array[:, NUMBER_CHANNELS_TOTAL] ==
+                                       data_window_array[0, NUMBER_CHANNELS_TOTAL])
         # print("count_match: ", count_match)
         if count_match == shape[1]:
-            x_window = data_window_array[:, 0:SMALL_CHANNEL_SETUP:1]
+            x_window = data_window_array[:, 0:NUMBER_CHANNELS_SELECT:1]
             # USE SAME FILTER AS IN ANDROID (C++ filt params),
             # Will need to pass through that filter in Android before feeding to model.
             mm_scale = preprocessing.MinMaxScaler().fit(x_window)
             x_window = mm_scale.transform(x_window)
             x_list.append(x_window)
-            y_list.append(data_window_array[0, NUMBER_DATA_CHANNELS])
+            y_list.append(data_window_array[0, NUMBER_CHANNELS_TOTAL])
 
     init_op = tf.global_variables_initializer()
 
@@ -210,17 +220,15 @@ def train_and_test(training_data, test_data, x, keep_prob, y, train_step, accura
         sess.run(init_op)
         # save model as pbtxt:
         # tf.train.write_graph(sess.graph_def, EXPORT_DIRECTORY, MODEL_NAME + '.pbtxt', True)
-
+        print("TRAIN_INPUT_SIZE: = ", TRAIN_BATCH_SIZE, "x", x_train.shape[1:3:1])
+        print("VAL_INPUT_SIZE: = ", VAL_BATCH_SIZE, "x", x_train.shape[1:3:1])
         for i in range(NUMBER_STEPS):
             # print("x_train.shape", x_train.shape)
             offset = (i * TRAIN_BATCH_SIZE) % (x_train.shape[0] - TRAIN_BATCH_SIZE)
             # print("OFFSET: " + str(offset))
             batch_x_train = x_train[offset:(offset + TRAIN_BATCH_SIZE)]
             shape_original = batch_x_train.shape
-            # print("shape_original(batch_x_train.shape)", shape_original)
-            # batch_x_train = np.reshape(batch_x_train,
-            #                            (shape_original[0], shape_original[1] * shape_original[2], -1)).squeeze()
-            # print("shape_new(batch_x_train.shape)", batch_x_train.shape)
+
             batch_y_train = y_train[offset:(offset + TRAIN_BATCH_SIZE)]
             if i % 10 == 0:
                 train_accuracy = accuracy.eval(feed_dict={x: batch_x_train, y: batch_y_train, keep_prob: 1.0})
@@ -231,9 +239,7 @@ def train_and_test(training_data, test_data, x, keep_prob, y, train_step, accura
                 offset = (val_step * VAL_BATCH_SIZE) % (x_test.shape[0] - VAL_BATCH_SIZE)
                 batch_x_val = x_test[offset:(offset + VAL_BATCH_SIZE), :, :]
                 shape_original = batch_x_val.shape
-                # batch_x_val = np.reshape(batch_x_val,
-                #                          (shape_original[0], shape_original[1] * shape_original[2], -1)).squeeze()
-                print("batch_x_val.shape: ", batch_x_val.shape)
+                # print("batch_x_val.shape: ", batch_x_val.shape)
                 batch_y_val = y_test[offset:(offset + VAL_BATCH_SIZE), :]
                 val_accuracy = accuracy.eval(feed_dict={x: batch_x_val, y: batch_y_val, keep_prob: 1.0})
                 print("Validation step %d, validation accuracy %g" % (val_step, val_accuracy))
@@ -241,7 +247,6 @@ def train_and_test(training_data, test_data, x, keep_prob, y, train_step, accura
 
             train_step.run(feed_dict={x: batch_x_train, y: batch_y_train, keep_prob: 0.15})
         shape_original = x_test.shape
-        # x_test = np.reshape(x_test, (shape_original[0], shape_original[1] * shape_original[2], -1)).squeeze()
         test_accuracy = sess.run(accuracy, feed_dict={x: x_test, y: y_test, keep_prob: 1.0})  # original
         # test_accuracy = sess.run(accuracy, feed_dict={x: x_test, y: y_test, keep_prob: 0.5})
         print("\n Testing Accuracy:", test_accuracy, "\n\n")
