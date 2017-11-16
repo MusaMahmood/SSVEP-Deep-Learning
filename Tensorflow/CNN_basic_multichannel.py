@@ -24,7 +24,7 @@ SPECIFIC_CHANNEL_SELECTION = [114, 116, 119, 126,
 NUMBER_CHANNELS_SELECT = 8
 
 VERSION_NUMBER = 'v0.0.1'
-DATA_FOLDER_PATH = r'/DATA/output_csv/S001'
+DATA_FOLDER_PATH = r'/DATA/output_csv/S009'
 KEY_DATA_DICTIONARY = 'relevant_data'
 EXPORT_DIRECTORY = 'model_exports/' + VERSION_NUMBER + '/'
 MODEL_NAME = 'ssvep_net_14ch'
@@ -184,10 +184,8 @@ def moving_window(data, length, step):
     # Use step of step, but don't skip any (overlap)
     return zip(*[it.islice(stream, i, None, step) for stream, i in zip(streams, it.count(step=1))])
 
-def train_and_test(training_data, test_data, x, keep_prob, y, train_step, accuracy, saver):
-    val_step = 0
-    # split into data windows & store:
-    data_window_list = list(moving_window(training_data, DATA_WINDOW_SIZE, MOVING_WINDOW_SHIFT))
+def separate_data(input_data):
+    data_window_list = list(moving_window(input_data, DATA_WINDOW_SIZE, MOVING_WINDOW_SHIFT))
     shape = np.asarray(data_window_list).shape
     print("dataWindowList.shape (windows, window length, columns)", shape)
     x_list = []
@@ -205,19 +203,26 @@ def train_and_test(training_data, test_data, x, keep_prob, y, train_step, accura
             x_list.append(x_window)
             y_list.append(data_window_array[0, NUMBER_CHANNELS_TOTAL])
 
-    init_op = tf.global_variables_initializer()
-
     # get unique class values and convert to dummy values
     # convert lists to arrays; convert to 32-bit floating point
     y_array = np.asarray(pd.get_dummies(y_list).values).astype(np.float32)
     print("y_array.shape", y_array.shape)
     x_array = np.asarray(x_list).astype(np.float32)
     print("x_array.shape", x_array.shape)
-    x_train, x_test, y_train, y_test = train_test_split(x_array, y_array, train_size=0.5, random_state=1)
+    return x_array, y_array
+
+
+def train_and_test(training_data, test_data, x, keep_prob, y, train_step, accuracy, saver):
+    val_step = 0
+    # split into data windows & store:
+    data_window_list = list(moving_window(training_data, DATA_WINDOW_SIZE, MOVING_WINDOW_SHIFT))
+    x_test_data, y_test_data = separate_data(training_data)
+    x_train, x_test, y_train, y_test = train_test_split(x_test_data, y_test_data, train_size=0.5, random_state=1)
     print("x_train.shape", x_train.shape)
     print("x_test.shape", x_test.shape)
     print("y_train.shape", y_train.shape)
     print("y_test.shape", y_test.shape)
+    init_op = tf.global_variables_initializer()
     config = tf.ConfigProto()
     config.gpu_options.allow_growth = True
     # sess = tf.Session(config=config)
@@ -256,13 +261,15 @@ def train_and_test(training_data, test_data, x, keep_prob, y, train_step, accura
         # test_accuracy = sess.run(accuracy, feed_dict={x: x_test, y: y_test, keep_prob: 0.5})
         print("\n Testing Accuracy:", test_accuracy, "\n\n")
 
+
         # save temp checkpoint
         saver.save(sess, EXPORT_DIRECTORY + MODEL_NAME + '.ckpt')
 
         # run Test:
         # Prepare test_data:
-        # test(sess, accuracy, x, y, x_test_val, y_test_val, keep_prob)
-    return 0
+        x_test_data, y_test_data = separate_data(test_data)
+        print("Validation Accuracy:",
+              sess.run(accuracy, feed_dict={x: x_test_data[0:128], y: y_test_data[0:128], keep_prob: 1.0}))
 
 
 def export_model(input_node_names, output_node_name):
@@ -302,8 +309,8 @@ def main():
     saver = tf.train.Saver()
 
     data_directory = get_data_directory()
-    training_data = load_data(data_directory, ['a', 'b'])
-    test_data = load_data(data_directory, ['c', 'd'])
+    training_data = load_data(data_directory, ['a', 'b', 'c'])
+    test_data = load_data(data_directory, ['d', 'e'])
 
     train_and_test(training_data, test_data, x, keep_prob, y_, train_step, accuracy, saver)
 

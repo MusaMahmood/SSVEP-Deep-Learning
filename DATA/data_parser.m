@@ -2,43 +2,22 @@
 clear;clc;close all;
 output_dir = 'output_csv\';
 extension = '.csv';
-sess = eegtoolkit.util.Session;
-%{
-subject = 1;
-for session = 1:3
-    sess.loadSubjectSession(1,subject,session);
-    %get filename:
-    output_dir = ['output_csv\', sess.sessions{1,subject,session}(1:end-1), '\'];
-    mkdir(output_dir);
-    filename = [output_dir, sess.sessions{1,subject,session}];
-    TRIALS = cell(sess.trials);
-    for trial = 1:length(TRIALS)
-        %fix label:
-        TRIALS{trial}.label = double(getLabel(TRIALS{trial}.label));
-        relevant_data = TRIALS{trial}.signal';
-        relevant_data(:,end) = TRIALS{trial}.label;
-        trial_num = ['_t',num2str(trial,'%03d')];
-        % save to CSV output folder:
-        filename_out = [filename, trial_num];
-%         dlmwrite([filename_out,extension], relevant_data, 'precision', '%5.16f');
-        save([filename_out, '.mat'], 'relevant_data');
-    end
-end
-%}
-for subject=4:11
+
+for subject=1:11
     for session = 1:5
+        sess = eegtoolkit.util.Session;
         if(sess.sessions{1,subject,session}(1:4)~='NULL')
             sess.loadSubjectSession(1,subject,session);
             %get filename:
-            output_dir = ['output_csv\', sess.sessions{1,subject,session}(1:end-1), '\'];
-            mkdir(output_dir);
-            filename = [output_dir, sess.sessions{1,subject,session}];
-            TRIALS = cell(sess.trials);
-            for trial = 1:length(TRIALS)
+            full_output_dir = [output_dir, sess.sessions{1,subject,session}(1:end-1), '\'];
+            mkdir(full_output_dir);
+            filename = [full_output_dir, sess.sessions{1,subject,session}];
+            disp(length(sess.trials))
+            for trial = 1:length(sess.trials)
                 %fix label:
-                TRIALS{trial}.label = double(getLabel(TRIALS{trial}.label));
-                relevant_data = TRIALS{trial}.signal';
-                relevant_data(:,end) = TRIALS{trial}.label;
+                sess.trials{trial}.label = double(getLabel(sess.trials{trial}.label));
+                relevant_data = sess.trials{trial}.signal';
+                relevant_data(:,end) = sess.trials{trial}.label;
                 trial_num = ['_t',num2str(trial,'%03d')];
                 % save to mat output folder:
                 filename_out = [filename, trial_num];
@@ -49,6 +28,8 @@ for subject=4:11
             
         end
     end
+    %Destroy after each session?
+    clear sess
 end
 
 function fixedLabel = getLabel(label)
