@@ -8,3 +8,5 @@ Tensorflow/.idea/
 *.asv
 DATA/liblsl-Matlab/
 *.csv
+*.pbtxt
+model_exports/

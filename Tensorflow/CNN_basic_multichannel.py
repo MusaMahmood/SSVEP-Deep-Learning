@@ -27,14 +27,17 @@ MODEL_NAME = 'ssvep_net_14ch'
 NUMBER_STEPS = 5000
 TRAIN_BATCH_SIZE = 256
 VAL_BATCH_SIZE = 10
-DATA_WINDOW_SIZE = 500  # TODO:
+DATA_WINDOW_SIZE = 300  # TODO:
 MOVING_WINDOW_SHIFT = 60
-
+#
 NUMBER_DATA_CHANNELS = 256
 NUMBER_CLASSES = 5
 SAMPLING_RATE = 250
 WINDOW_SECONDS = 5  # TODO:
 WINDOW_SIZE = SAMPLING_RATE * WINDOW_SECONDS
+#
+BIAS_VAR_1 = 32
+BIAS_VAR_2 = 64
 
 
 def get_data_directory():
@@ -62,7 +65,7 @@ def load_data(data_directory, letters):
 
 
 def model_input(input_node_name, keep_prob_node_name):
-    x = tf.placeholder(tf.float32, shape=[None, DATA_WINDOW_SIZE * NUMBER_DATA_CHANNELS], name=input_node_name)
+    x = tf.placeholder(tf.float32, shape=[None, DATA_WINDOW_SIZE * 2], name=input_node_name)
     keep_prob = tf.placeholder(tf.float32, name=keep_prob_node_name)
     y_ = tf.placeholder(tf.float32, shape=[None, 5])
     return x, keep_prob, y_
@@ -90,7 +93,7 @@ def max_pool_2x2(x):
 
 
 def build_model(x, keep_prob, y, output_node_name):
-    x_input = tf.reshape(x, [-1, DATA_WINDOW_SIZE, NUMBER_DATA_CHANNELS, 1])
+    x_input = tf.reshape(x, [-1, DATA_WINDOW_SIZE, 2, 1])
 
     # first convolution and pooling
     W_conv1 = weight_variable([5, 1, 1, 32])
@@ -167,7 +170,7 @@ def train_and_test(training_data, test_data, x, keep_prob, y, train_step, accura
                                        data_window_array[0, NUMBER_DATA_CHANNELS])
         # print("count_match: ", count_match)
         if count_match == shape[1]:
-            x_window = data_window_array[:, 0:NUMBER_DATA_CHANNELS:1]
+            x_window = data_window_array[:, 0:2:1]
             # USE SAME FILTER AS IN ANDROID (C++ filt params),
             # Will need to pass through that filter in Android before feeding to model.
             mm_scale = preprocessing.MinMaxScaler().fit(x_window)
@@ -180,27 +183,34 @@ def train_and_test(training_data, test_data, x, keep_prob, y, train_step, accura
     # get unique class values and convert to dummy values
     # convert lists to arrays; convert to 32-bit floating point
     y_array = np.asarray(pd.get_dummies(y_list).values).astype(np.float32)
+    print("y_array.shape", y_array.shape)
     x_array = np.asarray(x_list).astype(np.float32)
-
+    print("x_array.shape", x_array.shape)
     x_train, x_test, y_train, y_test = train_test_split(x_array, y_array, train_size=0.5, random_state=1)
-
-    with tf.Session() as sess:
+    print("x_train.shape", x_train.shape)
+    print("x_test.shape", x_test.shape)
+    print("y_train.shape", y_train.shape)
+    print("y_test.shape", y_test.shape)
+    config = tf.ConfigProto()
+    config.gpu_options.allow_growth = True
+    # sess = tf.Session(config=config)
+    with tf.Session(config=config) as sess:
         sess.run(init_op)
         # save model as pbtxt:
-        tf.train.write_graph(sess.graph_def, EXPORT_DIRECTORY, MODEL_NAME + '.pbtxt', True)
+        # tf.train.write_graph(sess.graph_def, EXPORT_DIRECTORY, MODEL_NAME + '.pbtxt', True)
 
         for i in range(NUMBER_STEPS):
+            # print("x_train.shape", x_train.shape)
             offset = (i * TRAIN_BATCH_SIZE) % (x_train.shape[0] - TRAIN_BATCH_SIZE)
+            # print("OFFSET: " + str(offset))
             batch_x_train = x_train[offset:(offset + TRAIN_BATCH_SIZE)]
             shape_original = batch_x_train.shape
-            # print("shape_original", shape_original)
+            # print("shape_original(batch_x_train.shape)", shape_original)
             batch_x_train = np.reshape(batch_x_train,
                                        (shape_original[0], shape_original[1] * shape_original[2], -1)).squeeze()
-            # print("shape_new", batch_x_train.shape)
+            # print("shape_new(batch_x_train.shape)", batch_x_train.shape)
             batch_y_train = y_train[offset:(offset + TRAIN_BATCH_SIZE)]
             if i % 10 == 0:
-                # train_accuracy = accuracy.eval(feed_dict=
-                #                                {x: batch_x_train, y: batch_y_train, keep_prob: 1.0})  # ORIGINAL
                 train_accuracy = accuracy.eval(feed_dict={x: batch_x_train, y: batch_y_train, keep_prob: 1.0})
                 print("step %d, training accuracy %g" % (i, train_accuracy))
 
@@ -211,6 +221,7 @@ def train_and_test(training_data, test_data, x, keep_prob, y, train_step, accura
                 shape_original = batch_x_val.shape
                 batch_x_val = np.reshape(batch_x_val,
                                          (shape_original[0], shape_original[1] * shape_original[2], -1)).squeeze()
+                # print("Reshaped: ", batch_x_val.shape)
                 batch_y_val = y_test[offset:(offset + VAL_BATCH_SIZE), :]
                 val_accuracy = accuracy.eval(feed_dict={x: batch_x_val, y: batch_y_val, keep_prob: 1.0})
                 print("Validation step %d, validation accuracy %g" % (val_step, val_accuracy))
@@ -265,22 +276,22 @@ def main():
     x, keep_prob, y_ = model_input(input_node_name, keep_prob_node_name)
 
     train_step, loss, accuracy, merged_summary_op = build_model(x, keep_prob, y_, output_node_name)
-    #
-    # saver = tf.train.Saver()
-    #
-    # data_directory = get_data_directory()
-    # training_data = load_data(data_directory, ['a', 'b'])
-    # test_data = load_data(data_directory, ['c', 'd'])
-    #
-    # train_and_test(training_data, test_data, x, keep_prob, y_, train_step, accuracy, saver)
-    #
-    # user_input = input('Export Current Model?')
-    #
-    # if user_input == "1" or user_input.lower() == "y":
-    #     export_model([input_node_name, keep_prob_node_name], output_node_name)
-    #
-    # print("TrainD shape: ", training_data.shape)
-    # print("TestD shape: ", test_data.shape)
+
+    saver = tf.train.Saver()
+
+    data_directory = get_data_directory()
+    training_data = load_data(data_directory, ['a', 'b'])
+    test_data = load_data(data_directory, ['c', 'd'])
+
+    train_and_test(training_data, test_data, x, keep_prob, y_, train_step, accuracy, saver)
+
+    user_input = input('Export Current Model?')
+
+    if user_input == "1" or user_input.lower() == "y":
+        export_model([input_node_name, keep_prob_node_name], output_node_name)
+
+    print("TrainD shape: ", training_data.shape)
+    print("TestD shape: ", test_data.shape)
 
     print("Terminating...")
 
