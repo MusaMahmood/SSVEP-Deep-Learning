@@ -24,7 +24,7 @@ SPECIFIC_CHANNEL_SELECTION = [114, 116, 119, 126,
 NUMBER_CHANNELS_SELECT = 8
 
 VERSION_NUMBER = 'v0.0.1'
-DATA_FOLDER_PATH = r'/DATA/output_csv/S009'
+DATA_FOLDER_PATH = r'/DATA/output_csv/S011'
 KEY_DATA_DICTIONARY = 'relevant_data'
 EXPORT_DIRECTORY = 'model_exports/' + VERSION_NUMBER + '/'
 MODEL_NAME = 'ssvep_net_14ch'
@@ -309,8 +309,8 @@ def main():
     saver = tf.train.Saver()
 
     data_directory = get_data_directory()
-    training_data = load_data(data_directory, ['a', 'b', 'c'])
-    test_data = load_data(data_directory, ['d', 'e'])
+    training_data = load_data(data_directory, ['a', 'b', 'c', 'd'])
+    test_data = load_data(data_directory, ['e'])
 
     train_and_test(training_data, test_data, x, keep_prob, y_, train_step, accuracy, saver)
 
