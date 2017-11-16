@@ -19,6 +19,10 @@ from tensorflow.python.tools import freeze_graph
 from tensorflow.python.tools import optimize_for_inference_lib
 
 # CONSTANTS:
+SPECIFIC_CHANNEL_SELECTION = [114, 116, 119, 126,
+                              137, 147, 150, 168]
+NUMBER_CHANNELS_SELECT = 8
+
 VERSION_NUMBER = 'v0.0.1'
 DATA_FOLDER_PATH = r'/DATA/output_csv/S001'
 KEY_DATA_DICTIONARY = 'relevant_data'
@@ -27,25 +31,28 @@ MODEL_NAME = 'ssvep_net_14ch'
 NUMBER_STEPS = 5000
 TRAIN_BATCH_SIZE = 256
 VAL_BATCH_SIZE = 20
-DATA_WINDOW_SIZE = 300  # TODO:
+DATA_WINDOW_SIZE = 400  # TODO:
 MOVING_WINDOW_SHIFT = 60
-NUMBER_CHANNELS_SELECT = 16
+
 NUMBER_CHANNELS_TOTAL = 256
 NUMBER_CLASSES = 5
 
 # FOR MODEL DESIGN
+STRIDE_CONV2D = [1, 1, 1, 1]
+
 BIAS_VAR_CL1 = 32
 BIAS_VAR_CL2 = 64
 WEIGHT_VAR_CL1 = [NUMBER_CLASSES, 1, 1, BIAS_VAR_CL1]
 WEIGHT_VAR_CL2 = [NUMBER_CLASSES, 1, BIAS_VAR_CL1, BIAS_VAR_CL2]
+
 MAX_POOL_KSIZE = [1, 2, 1, 1]
 MAX_POOL_STRIDE = [1, 2, 1, 1]
 
-FC_LAYER_DIMENSIONS = 75 * BIAS_VAR_CL2
-WEIGHT_VAR_FC1 = [NUMBER_CHANNELS_SELECT * FC_LAYER_DIMENSIONS, 1024]
+FC_LAYER_DIMENSIONS = (DATA_WINDOW_SIZE // 4) * BIAS_VAR_CL2
+WEIGHT_VAR_FC1 = [NUMBER_CHANNELS_SELECT * FC_LAYER_DIMENSIONS, (BIAS_VAR_CL1**2)]
 MAX_POOL_FLAT_SHAPE_FC1 = [-1, NUMBER_CHANNELS_SELECT * FC_LAYER_DIMENSIONS]
-BIAS_VAR_FC1 = [1024]
-BIAS_VAR_FC2 = [2048]
+BIAS_VAR_FC1 = [(BIAS_VAR_CL1**2)]
+BIAS_VAR_FC2 = [(BIAS_VAR_CL1**2)*2]
 WEIGHT_VAR_FC2 = [*BIAS_VAR_FC1, *BIAS_VAR_FC2]
 WEIGHT_VAR_FC_OUTPUT = [*BIAS_VAR_FC2, NUMBER_CLASSES]
 BIAS_VAR_FC_OUTPUT = [NUMBER_CLASSES]
@@ -78,7 +85,7 @@ def load_data(data_directory, letters):
 def model_input(input_node_name, keep_prob_node_name):
     x = tf.placeholder(tf.float32, shape=[None, DATA_WINDOW_SIZE, NUMBER_CHANNELS_SELECT], name=input_node_name)
     keep_prob = tf.placeholder(tf.float32, name=keep_prob_node_name)
-    y_ = tf.placeholder(tf.float32, shape=[None, 5])
+    y_ = tf.placeholder(tf.float32, shape=[None, NUMBER_CLASSES])
     return x, keep_prob, y_
 
 
@@ -98,7 +105,7 @@ def bias_variable(shape):
 # Convolution and max-pooling functions
 # Computes 2-D convolution given 4-D input and filter tensors
 def conv2d(x, weights):
-    return tf.nn.conv2d(x, weights, strides=[1, 1, 1, 1], padding='SAME')
+    return tf.nn.conv2d(x, weights, strides=STRIDE_CONV2D, padding='SAME')
 
 
 def max_pool_2x2(x, ksize, stride):
@@ -167,7 +174,8 @@ def build_model(x, keep_prob, y, output_node_name):
 
 def test(sess, accuracy, x, y, x_test_val, y_test_val, keep_prob):
     # Validate with Test Data:
-    print("Testing Accuracy:", sess.run(accuracy, feed_dict={x: x_test_val[0:128], y: y_test_val[0:128], keep_prob: 1.0}))
+    print("Testing Accuracy:", sess.run(accuracy, feed_dict={x: x_test_val[0:128],
+                                                             y: y_test_val[0:128], keep_prob: 1.0}))
 
 
 def moving_window(data, length, step):
@@ -175,7 +183,6 @@ def moving_window(data, length, step):
     streams = it.tee(data, length)
     # Use step of step, but don't skip any (overlap)
     return zip(*[it.islice(stream, i, None, step) for stream, i in zip(streams, it.count(step=1))])
-
 
 def train_and_test(training_data, test_data, x, keep_prob, y, train_step, accuracy, saver):
     val_step = 0
@@ -187,12 +194,10 @@ def train_and_test(training_data, test_data, x, keep_prob, y, train_step, accura
     y_list = []
     for data_window in data_window_list:
         data_window_array = np.asarray(data_window)
-        # TODO: Replace 2 & other constants with NUMBER_DATA_CHANNELS as needed
         count_match = np.count_nonzero(data_window_array[:, NUMBER_CHANNELS_TOTAL] ==
                                        data_window_array[0, NUMBER_CHANNELS_TOTAL])
-        # print("count_match: ", count_match)
         if count_match == shape[1]:
-            x_window = data_window_array[:, 0:NUMBER_CHANNELS_SELECT:1]
+            x_window = data_window_array[:, SPECIFIC_CHANNEL_SELECTION]
             # USE SAME FILTER AS IN ANDROID (C++ filt params),
             # Will need to pass through that filter in Android before feeding to model.
             mm_scale = preprocessing.MinMaxScaler().fit(x_window)
