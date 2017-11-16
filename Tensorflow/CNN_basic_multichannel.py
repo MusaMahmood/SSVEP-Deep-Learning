@@ -19,9 +19,9 @@ from tensorflow.python.tools import freeze_graph
 from tensorflow.python.tools import optimize_for_inference_lib
 
 # CONSTANTS:
-SPECIFIC_CHANNEL_SELECTION = [114, 116, 119, 126,
-                              137, 147, 150, 168]
-NUMBER_CHANNELS_SELECT = 8
+# SPECIFIC_CHANNEL_SELECTION = [114, 116, 126, 150, 168]
+SPECIFIC_CHANNEL_SELECTION = [126, 150]
+NUMBER_CHANNELS_SELECT = 2
 
 VERSION_NUMBER = 'v0.0.1'
 DATA_FOLDER_PATH = r'/DATA/output_csv/S011'
@@ -31,7 +31,7 @@ MODEL_NAME = 'ssvep_net_14ch'
 NUMBER_STEPS = 5000
 TRAIN_BATCH_SIZE = 256
 VAL_BATCH_SIZE = 20
-DATA_WINDOW_SIZE = 400  # TODO:
+DATA_WINDOW_SIZE = 300
 MOVING_WINDOW_SHIFT = 60
 
 NUMBER_CHANNELS_TOTAL = 256
@@ -69,10 +69,7 @@ def load_data(data_directory, letters):
         str_file_path = data_directory + "/*" + s + "*.mat"
         print(str_file_path)
         training_files = glob.glob(str_file_path)
-        # print("training_files: ", np.asarray(training_files))
         for f in training_files:
-            # list_data = whosmat(f)
-            # print("Filename: ", f, "\n Data: ", list_data)
             data_from_file = loadmat(f)  # Saved as mat_dict: Dictionary with variable names as keys:
             # Extract 'relevant_data':
             relevant_data = data_from_file.get(KEY_DATA_DICTIONARY)
@@ -184,6 +181,7 @@ def moving_window(data, length, step):
     # Use step of step, but don't skip any (overlap)
     return zip(*[it.islice(stream, i, None, step) for stream, i in zip(streams, it.count(step=1))])
 
+
 def separate_data(input_data):
     data_window_list = list(moving_window(input_data, DATA_WINDOW_SIZE, MOVING_WINDOW_SHIFT))
     shape = np.asarray(data_window_list).shape
@@ -195,7 +193,7 @@ def separate_data(input_data):
         count_match = np.count_nonzero(data_window_array[:, NUMBER_CHANNELS_TOTAL] ==
                                        data_window_array[0, NUMBER_CHANNELS_TOTAL])
         if count_match == shape[1]:
-            x_window = data_window_array[:, SPECIFIC_CHANNEL_SELECTION]
+            x_window = data_window_array[:, SPECIFIC_CHANNEL_SELECTION]  # [0:2:1]
             # USE SAME FILTER AS IN ANDROID (C++ filt params),
             # Will need to pass through that filter in Android before feeding to model.
             mm_scale = preprocessing.MinMaxScaler().fit(x_window)
@@ -215,7 +213,6 @@ def separate_data(input_data):
 def train_and_test(training_data, test_data, x, keep_prob, y, train_step, accuracy, saver):
     val_step = 0
     # split into data windows & store:
-    data_window_list = list(moving_window(training_data, DATA_WINDOW_SIZE, MOVING_WINDOW_SHIFT))
     x_test_data, y_test_data = separate_data(training_data)
     x_train, x_test, y_train, y_test = train_test_split(x_test_data, y_test_data, train_size=0.5, random_state=1)
     print("x_train.shape", x_train.shape)
