@@ -16,22 +16,21 @@ from scipy.io import loadmat
 
 # CONSTANTS:
 VERSION_NUMBER = 'v0.0.1'
-DATA_FOLDER_PATH = r'/DATA/output_csv/S001'
+DATA_FOLDER_PATH = r'/DATA/output_csv/S009'
 KEY_DATA_DICTIONARY = 'relevant_data'
 EXPORT_DIRECTORY = 'model_exports/' + VERSION_NUMBER + '/'
 MODEL_NAME = 'ssvep_net_14ch'
 NUMBER_STEPS = 5000
 TRAIN_BATCH_SIZE = 256
 VAL_BATCH_SIZE = 10
-DATA_WINDOW_SIZE = 300
-MOVING_WINDOW_SHIFT = 150
+DATA_WINDOW_SIZE = 1250
+MOVING_WINDOW_SHIFT = 60
 
-NUMBER_CHANNELS_SELECT = 16
-SPECIFIC_CHANNEL_SELECTION = range(NUMBER_CHANNELS_SELECT)
+SPECIFIC_CHANNEL_SELECTION = [114, 116, 126, 150, 168]
+NUMBER_CHANNELS_SELECT = np.asarray(SPECIFIC_CHANNEL_SELECTION).shape
+print(NUMBER_CHANNELS_SELECT)
 NUMBER_CHANNELS_TOTAL = 256
-
-FINAL_EPSILON = 0.0001  # final value of epsilon
-INITIAL_EPSILON = 0.1  # starting value of epsilon
+NUMBER_EPOCHS = 100
 
 # TODO: Double check this value
 NUMBER_DATA_CHANNELS = 256
@@ -39,6 +38,27 @@ NUMBER_CLASSES = 5
 
 
 # METHODS:
+def create_keras_model(input_shape, kernel_size):
+    print("kernel_size: ", kernel_size)
+    model = Sequential()
+    model.add(k.layers.Conv2D(32, kernel_size=kernel_size, strides=(2,  1), activation='relu', input_shape=input_shape))
+    model.add(k.layers.Conv2D(64, kernel_size, activation='relu'))
+    model.add(k.layers.MaxPooling2D(pool_size=(1, 1)))
+    model.add(k.layers.Dropout(0.2))
+    model.add(k.layers.Flatten())
+    model.add(k.layers.Dense(128, activation='relu'))
+    model.add(k.layers.Dropout(0.5))
+    model.add(k.layers.Dense(NUMBER_CLASSES, activation='softmax'))
+    adam = k.optimizers.Adam(lr=1e-4)
+    model.compile(loss="mse", optimizer=adam, metrics=['accuracy'])
+    model.summary()
+    ui = input('Train model?')
+    if ui == '1':
+        return model
+    else:
+        exit()
+
+
 def get_data_directory():
     os.chdir("..")
     return os.path.abspath(os.curdir) + DATA_FOLDER_PATH
@@ -73,11 +93,15 @@ def separate_data(input_data, total_number_channels):
     # get unique class values and convert to dummy values
     # convert lists to arrays; convert to 32-bit floating point
     # y_array = np.asarray(pd.get_dummies(y_list).values).astype(np.float32)
-    y_array = np.asarray(y_list).astype(np.float32)
-    y_array = np.reshape(y_array, [*y_array.shape, -1])
+    y_array = np.asarray(y_list).astype(int)
     print("y_array.shape", y_array.shape)
+    y_array = [x-1 for x in y_array]
+    y_array = k.utils.to_categorical(y_array, NUMBER_CLASSES)
+    print("y_array.reshape", y_array.shape)
     x_array = np.asarray(x_list).astype(np.float32)
     print("x_array.shape", x_array.shape)
+    x_array = np.reshape(x_array, [x_array.shape[0], 1, x_array.shape[1], x_array.shape[2]])
+    print("x_array.reshape", x_array.shape)
     return x_array, y_array
 
 
@@ -99,43 +123,23 @@ def load_data(data_directory, letters):
     return separate_data(data_array, number_channels)
 
 
-def create_keras_model(input_shape, kernel_size):
-    print("kernel_size: ", kernel_size)
-    model = Sequential()
-    model.add(k.layers.Conv2D(32, kernel_size=kernel_size, strides=(1, 1), activation='relu', input_shape=input_shape))
-    model.add(k.layers.MaxPooling2D(pool_size=(1, 1), strides=(1, 1)))
-    model.add(k.layers.Conv2D(64, kernel_size, activation='relu'))
-    model.add(k.layers.MaxPooling2D(pool_size=(2, 2)))
-    model.add(k.layers.Flatten())
-    model.add(k.layers.Dense(512, activation='relu'))
-    model.add(k.layers.Dense(NUMBER_CLASSES+1, activation='softmax'))
-    adam = k.optimizers.Adam(lr=1e-4)
-    model.compile(loss="mse", optimizer=adam, metrics=['accuracy'])
-    model.summary()
-    return model
-
-
 def train_network(model, data, labels):
     print("Train...")
     print("ydata_shape: ", labels.shape)
-    # exit()
-    data = np.reshape(data, [*data.shape, 1])
     print("xdata_shape: ", data.shape)
-
-    labels_ker = k.utils.to_categorical(labels)
-    model.fit(data, labels_ker, epochs=10, batch_size=32)
-    model.save_weights(EXPORT_DIRECTORY)
+    model.fit(data, labels, epochs=NUMBER_EPOCHS, batch_size=64, validation_split=0.1)
+    model.save_weights(EXPORT_DIRECTORY+'potato.pbtxt')
 
 
 def main():
     data_directory = get_data_directory()
-    x_data, y_data = load_data(data_directory, ['a', 'b', 'c', 'd'])
+    x_data, y_data = load_data(data_directory, ['a', 'b', 'c', 'd', 'e'])
     # Build CNN in Keras:
-    input_shape = [*x_data.shape[1:3:1], 1]
     print("input_shape: ", x_data.shape)
-    # for i in range(5):
-    #     keras_model = create_keras_model(input_shape, [i, i])
-    keras_model = create_keras_model(input_shape, [2, 2])
+    input_shape = [1, *x_data.shape[2:4:1]]
+    print("input_reshaped", input_shape)
+    # input("Continue?")
+    keras_model = create_keras_model(input_shape, [1, 1])
     train_network(keras_model, x_data, y_data)
     print("Terminating...")
 
