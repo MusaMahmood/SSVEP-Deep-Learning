@@ -10,3 +10,4 @@ DATA/liblsl-Matlab/
 *.csv
 *.pbtxt
 model_exports/
+*.npz

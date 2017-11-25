@@ -20,7 +20,8 @@ from tensorflow.python.tools import optimize_for_inference_lib
 
 # CONSTANTS:
 # TODO: SELECT 8 CHANNELS: SEE IMAGE:
-SPECIFIC_CHANNEL_SELECTION = [114, 116, 126, 150, 168]
+# SPECIFIC_CHANNEL_SELECTION = [114, 116, 126, 150, 168]
+SPECIFIC_CHANNEL_SELECTION = range(256)
 NUMBER_CHANNELS_SELECT = np.asarray(SPECIFIC_CHANNEL_SELECTION).shape[0]  # Selects first int in shape
 
 VERSION_NUMBER = 'v0.0.1'
@@ -31,7 +32,7 @@ MODEL_NAME = 'ssvep_net_14ch'
 NUMBER_STEPS = 5000
 TRAIN_BATCH_SIZE = 256
 VAL_BATCH_SIZE = 20
-DATA_WINDOW_SIZE = 300
+DATA_WINDOW_SIZE = 125
 MOVING_WINDOW_SHIFT = 60
 
 NUMBER_CHANNELS_TOTAL = 256
@@ -49,10 +50,10 @@ MAX_POOL_KSIZE = [1, 2, 1, 1]
 MAX_POOL_STRIDE = [1, 2, 1, 1]
 
 FC_LAYER_DIMENSIONS = (DATA_WINDOW_SIZE // 4) * BIAS_VAR_CL2
-WEIGHT_VAR_FC1 = [NUMBER_CHANNELS_SELECT * FC_LAYER_DIMENSIONS, (BIAS_VAR_CL1**2)]
+WEIGHT_VAR_FC1 = [NUMBER_CHANNELS_SELECT * FC_LAYER_DIMENSIONS, (BIAS_VAR_CL1 ** 2)]
 MAX_POOL_FLAT_SHAPE_FC1 = [-1, NUMBER_CHANNELS_SELECT * FC_LAYER_DIMENSIONS]
-BIAS_VAR_FC1 = [(BIAS_VAR_CL1**2)]
-BIAS_VAR_FC2 = [(BIAS_VAR_CL1**2)*2]
+BIAS_VAR_FC1 = [(BIAS_VAR_CL1 ** 2)]
+BIAS_VAR_FC2 = [(BIAS_VAR_CL1 ** 2) * 2]
 WEIGHT_VAR_FC2 = [*BIAS_VAR_FC1, *BIAS_VAR_FC2]
 WEIGHT_VAR_FC_OUTPUT = [*BIAS_VAR_FC2, NUMBER_CLASSES]
 BIAS_VAR_FC_OUTPUT = [NUMBER_CLASSES]
@@ -116,54 +117,46 @@ def max_pool_2x2(x, ksize, stride):
 def build_model(x, keep_prob, y, output_node_name):
     x_input = tf.reshape(x, [-1, DATA_WINDOW_SIZE, NUMBER_CHANNELS_SELECT, 1])  # [-1, 250, 256, 1]
 
+    # weight and bias of first convolution layer
+    W_conv1 = weight_variable([5, 5, 1, 32])
+    b_conv1 = bias_variable([32])
+
     # first convolution and pooling
-    w_conv1 = weight_variable(WEIGHT_VAR_CL1)
-    b_conv1 = bias_variable([BIAS_VAR_CL1])
-    # tf.nn.relu: Computes rectified linear: max(features, 0)
-    # Args: features (a tensor)
-    print("x_input.shape", x_input.shape)
-    print("W_conv1.shape", w_conv1.shape)
-    h_conv1 = tf.nn.relu(conv2d(x_input, w_conv1) + b_conv1)
-    print("1st conv layer dimensions: ", h_conv1.shape)
-    # Performs max pooling on the inputs.
-    h_pool1 = max_pool_2x2(h_conv1, MAX_POOL_KSIZE, MAX_POOL_STRIDE)
-    print("h_pool1 output", h_pool1.shape)
+    h_conv1 = tf.nn.relu(conv2d(x_input, W_conv1) + b_conv1)
+    h_pool1 = max_pool_2x2(h_conv1)
+
+    # weight and bias of the second convolution layer
+    W_conv2 = weight_variable([5, 5, 32, 64])
+    b_conv2 = bias_variable([64])
+
     # second convolution and pooling
-    w_conv2 = weight_variable(WEIGHT_VAR_CL2)
-    b_conv2 = bias_variable([BIAS_VAR_CL2])
+    h_conv2 = tf.nn.relu(conv2d(h_pool1, W_conv2) + b_conv2)
+    h_pool2 = max_pool_2x2(h_conv2)
 
-    h_conv2 = tf.nn.relu(conv2d(h_pool1, w_conv2) + b_conv2)
-    h_pool2 = max_pool_2x2(h_conv2, MAX_POOL_KSIZE, MAX_POOL_STRIDE)
-
-    # fully connected layer1,the shape of the patch should be defined
-    w_fc1 = weight_variable(WEIGHT_VAR_FC1)
-    b_fc1 = bias_variable(BIAS_VAR_FC1)
+    # weight and bias of the fully connected layer
+    W_fc1 = weight_variable([13 * 256 * 64, 1024])
+    b_fc1 = bias_variable([1024])
 
     # the input should be shaped/flattened
-    h_pool2_flat = tf.reshape(h_pool2, MAX_POOL_FLAT_SHAPE_FC1)
-    h_fc1 = tf.nn.relu(tf.matmul(h_pool2_flat, w_fc1) + b_fc1)
+    h_pool2_flat = tf.reshape(h_pool2, [-1, 13 * 256 * 64])
+    h_fc1 = tf.nn.relu(tf.matmul(h_pool2_flat, W_fc1) + b_fc1)
 
-    # fully connected layer2
-    w_fc2 = weight_variable(WEIGHT_VAR_FC2)
-    b_fc2 = bias_variable(BIAS_VAR_FC2)
-    h_fc2 = tf.nn.relu(tf.matmul(h_fc1, w_fc2) + b_fc2)
-
-    h_fc2_drop = tf.nn.dropout(h_fc2, keep_prob)
+    keep_prob = tf.placeholder(tf.float32)
+    h_fc1_drop = tf.nn.dropout(h_fc1, keep_prob)
 
     # weight and bias of the output layer
-    w_fc_output = weight_variable(WEIGHT_VAR_FC_OUTPUT)
-    b_fc_output = bias_variable(BIAS_VAR_FC_OUTPUT)
+    W_fo = weight_variable([1024, 3])
+    b_fo = bias_variable([3])
 
-    y_conv = tf.matmul(h_fc2_drop, w_fc_output) + b_fc_output
-    outputs = tf.nn.softmax(y_conv, name=output_node_name)
+    y_conv = tf.matmul(h_fc1_drop, W_fo) + b_fo
 
-    # training and reducing the cost/loss function
+    # training and reducing the cost/loss fucntion
     cross_entropy = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=y, logits=y_conv))
     train_step = tf.train.AdamOptimizer(1e-4).minimize(cross_entropy)
-    correct_prediction = tf.equal(tf.argmax(outputs, 1), tf.argmax(y, 1))
+    correct_prediction = tf.equal(tf.argmax(y_conv, 1), tf.argmax(y, 1))
 
+    # finding accuracy
     accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
-
     merged_summary_op = tf.summary.merge_all()
 
     return train_step, cross_entropy, accuracy, merged_summary_op
@@ -258,7 +251,6 @@ def train_and_test(training_data, test_data, x, keep_prob, y, train_step, accura
         # test_accuracy = sess.run(accuracy, feed_dict={x: x_test, y: y_test, keep_prob: 0.5})
         print("\n Testing Accuracy:", test_accuracy, "\n\n")
 
-
         # save temp checkpoint
         saver.save(sess, EXPORT_DIRECTORY + MODEL_NAME + '.ckpt')
 
@@ -306,6 +298,7 @@ def main():
     saver = tf.train.Saver()
 
     data_directory = get_data_directory()
+
     training_data = load_data(data_directory, ['a', 'b', 'c', 'd'])
     test_data = load_data(data_directory, ['e'])
 
