@@ -19,8 +19,8 @@ from tensorflow.python.tools import freeze_graph
 from tensorflow.python.tools import optimize_for_inference_lib
 
 # CONSTANTS:
-SPECIFIC_CHANNEL_SELECTION = np.asarray(range(113, 132))
 # SPECIFIC_CHANNEL_SELECTION = np.asarray([120, 121, 122, 123, 124, 125, 126, 138, 149, 158, 167, 175, 187])
+SPECIFIC_CHANNEL_SELECTION = np.asarray(range(114, 132))
 NUMBER_CHANNELS_SELECT = SPECIFIC_CHANNEL_SELECTION.shape[0]  # Selects first int in shape
 
 VERSION_NUMBER = 'v0.0.1'
@@ -42,6 +42,7 @@ STRIDE_CONV2D = [1, 1, 1, 1]
 
 BIAS_VAR_CL1 = 32
 BIAS_VAR_CL2 = 64
+
 WEIGHT_VAR_CL1 = [NUMBER_CLASSES, 1, 1, BIAS_VAR_CL1]
 WEIGHT_VAR_CL2 = [NUMBER_CLASSES, 1, BIAS_VAR_CL1, BIAS_VAR_CL2]
 
@@ -92,7 +93,6 @@ def separate_data(input_data):
     # get unique class values and convert to dummy values
     # convert lists to arrays; convert to 32-bit floating point
     # TODO: DO THIS ELSEWHERE:
-    # y_array = np.asarray(pd.get_dummies(y_list).values).astype(np.float32)
     y_array = np.asarray(y_list)
     # print("y_array.shape", y_array.shape)
     x_array = np.asarray(x_list).astype(np.float32)
@@ -100,17 +100,16 @@ def separate_data(input_data):
     return x_array, y_array
 
 
-def load_data(data_directory, letters):
+def load_data(data_directory, letters, selection):
     x_train_data = np.empty([0, DATA_WINDOW_SIZE, NUMBER_CHANNELS_SELECT], np.float32)
     y_train_data = np.empty([0], np.float32)
-    # data_array = np.empty([0, NUMBER_CHANNELS_TOTAL + 1], np.float32)
     for s in letters:
         str_file_path = data_directory + "/*" + s + "*.mat"
         print(str_file_path)
         training_files = glob.glob(str_file_path)
         # TODO: KEEP ONLY TRIALS 9:23:
-        # print("training_files: ", training_files[8:24])
-        for f in training_files[8:24]:
+        print("training_files: ", training_files[selection])
+        for f in training_files[selection]:
             data_from_file = loadmat(f)  # Saved as mat_dict: Dictionary with variable names as keys:
             # Extract 'relevant_data':
             relevant_data = data_from_file.get(KEY_DATA_DICTIONARY)
@@ -121,9 +120,7 @@ def load_data(data_directory, letters):
             x_train_data = np.concatenate((x_train_data, x), axis=0)
             y_train_data = np.concatenate((y_train_data, y), axis=0)
     # return data_array
-    print("X_DATA shape: ", x_train_data.shape)
     y_train_data = np.asarray(pd.get_dummies(y_train_data).values).astype(np.float32)
-    print("Y_DATA shape: ", y_train_data.shape)
     return x_train_data, y_train_data
 
 
@@ -153,8 +150,7 @@ def conv2d(x, weights):
     return tf.nn.conv2d(x, weights, strides=STRIDE_CONV2D, padding='SAME')
 
 
-def max_pool_2x2(x, ksize, stride):
-    # Args:
+def max_pool_2x2(x, ksize, stride):  # Args:
     # ksize(4-D):  The size of the window for each dimension of the input tensor.
     # strides(4-D): The stride of the sliding window for each dimension of the input tensor.
     return tf.nn.max_pool(x, ksize=ksize,
@@ -217,36 +213,25 @@ def build_model(x, keep_prob, y, output_node_name):
     return train_step, cross_entropy, accuracy, merged_summary_op
 
 
-def test(sess, accuracy, x, y, x_test_val, y_test_val, keep_prob):
-    # Validate with Test Data:
-    print("Testing Accuracy:", sess.run(accuracy, feed_dict={x: x_test_val[0:128],
-                                                             y: y_test_val[0:128], keep_prob: 1.0}))
-
-
 def train_and_test(x_train_data, y_train_data, x, keep_prob, y, train_step, accuracy, saver):
     val_step = 0
     # split into data windows & store:
-    # x_test_data, y_test_data = separate_data(training_data)
     x_train, x_test, y_train, y_test = train_test_split(x_train_data, y_train_data, train_size=0.8, random_state=1)
-    print("x_train.shape", x_train.shape)
-    print("x_test.shape", x_test.shape)
-    print("y_train.shape", y_train.shape)
-    print("y_test.shape", y_test.shape)
+    print("train_split x:", x_train.shape, " y: ", y_train.shape)
+    print("test_split x:", x_test.shape, " y: ", y_test.shape)
     init_op = tf.global_variables_initializer()
     config = tf.ConfigProto()
     config.gpu_options.allow_growth = True
     with tf.Session(config=config) as sess:
         sess.run(init_op)
         # save model as pbtxt:
-        # tf.train.write_graph(sess.graph_def, EXPORT_DIRECTORY, MODEL_NAME + '.pbtxt', True)
+        tf.train.write_graph(sess.graph_def, EXPORT_DIRECTORY, MODEL_NAME + '.pbtxt', True)
         print("TRAIN_INPUT_SIZE: = ", TRAIN_BATCH_SIZE, "x", x_train.shape[1:3:1])
         print("VAL_INPUT_SIZE: = ", VAL_BATCH_SIZE, "x", x_train.shape[1:3:1])
         for i in range(NUMBER_STEPS):
-            # print("x_train.shape", x_train.shape)
             offset = (i * TRAIN_BATCH_SIZE) % (x_train.shape[0] - TRAIN_BATCH_SIZE)
-            # print("OFFSET: " + str(offset))
             batch_x_train = x_train[offset:(offset + TRAIN_BATCH_SIZE)]
-            shape_original = batch_x_train.shape
+            # shape_original = batch_x_train.shape
 
             batch_y_train = y_train[offset:(offset + TRAIN_BATCH_SIZE)]
             if i % 10 == 0:
@@ -257,15 +242,14 @@ def train_and_test(x_train_data, y_train_data, x, keep_prob, y, train_step, accu
                 # Calculate batch loss and accuracy
                 offset = (val_step * VAL_BATCH_SIZE) % (x_test.shape[0] - VAL_BATCH_SIZE)
                 batch_x_val = x_test[offset:(offset + VAL_BATCH_SIZE), :, :]
-                shape_original = batch_x_val.shape
-                # print("batch_x_val.shape: ", batch_x_val.shape)
+                # shape_original = batch_x_val.shape
                 batch_y_val = y_test[offset:(offset + VAL_BATCH_SIZE), :]
                 val_accuracy = accuracy.eval(feed_dict={x: batch_x_val, y: batch_y_val, keep_prob: 1.0})
                 print("Validation step %d, validation accuracy %g" % (val_step, val_accuracy))
                 val_step += 1
 
             train_step.run(feed_dict={x: batch_x_train, y: batch_y_train, keep_prob: 0.15})
-        shape_original = x_test.shape
+        # shape_original = x_test.shape
         test_accuracy = sess.run(accuracy, feed_dict={x: x_test, y: y_test, keep_prob: 1.0})  # original
         # test_accuracy = sess.run(accuracy, feed_dict={x: x_test, y: y_test, keep_prob: 0.5})
         print("\n Testing Accuracy:", test_accuracy, "\n\n")
@@ -275,7 +259,7 @@ def train_and_test(x_train_data, y_train_data, x, keep_prob, y, train_step, accu
 
         # run Test:
         # print("Validation Accuracy:",
-        #       sess.run(accuracy, feed_dict={x: x_test_data[0:128], y: y_test_data[0:128], keep_prob: 1.0}))
+        #       sess.run(accuracy, feed_dict={x: x_test_data, y: y_test_data, keep_prob: 0.5}))
 
 
 def export_model(input_node_names, output_node_name):
@@ -303,7 +287,7 @@ def main():
     output_folder_name = 'exports'
     if not path.exists(output_folder_name):
         os.mkdir(output_folder_name)
-    # ?
+
     input_node_name = 'input'
     keep_prob_node_name = 'keep_prob'
     output_node_name = 'output'
@@ -311,14 +295,14 @@ def main():
     train_step, loss, accuracy, merged_summary_op = build_model(x, keep_prob, y_, output_node_name)
     saver = tf.train.Saver()
     data_directory = get_data_directory()
-    x_train_data, y_train_data = load_data(data_directory, ['a'])
-    # x_test_data, y_test_data = load_data(data_directory, ['e'])
+    x_train_data, y_train_data = load_data(data_directory, ['a'], np.s_[8:24])
+    print("Training Data: X:", x_train_data.shape, " Y: ", y_train_data.shape)
+    x_test_data, y_test_data = load_data(data_directory, ['a'], np.s_[0:8])
+    print("Test Data: X:", x_test_data.shape, " Y: ", y_test_data.shape)
     train_and_test(x_train_data, y_train_data, x, keep_prob, y_, train_step, accuracy, saver)
     user_input = input('Export Current Model?')
     if user_input == "1" or user_input.lower() == "y":
         export_model([input_node_name, keep_prob_node_name], output_node_name)
-    # print("TrainD shape: ", training_data.shape)
-    # print("TestD shape: ", test_data.shape)
     print("Terminating...")
 
 
