@@ -11,3 +11,4 @@ DATA/liblsl-Matlab/
 *.pbtxt
 model_exports/
 *.npz
+DATA/output_csv/.idea/
