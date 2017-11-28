@@ -74,7 +74,6 @@ def moving_window(data, length, step):
 def separate_data(input_data):
     data_window_list = list(moving_window(input_data, DATA_WINDOW_SIZE, MOVING_WINDOW_SHIFT))
     shape = np.asarray(data_window_list).shape
-    # print("dataWindowList.shape (windows, window length, columns)", shape)
     x_list = []
     y_list = []
     for data_window in data_window_list:
@@ -87,6 +86,7 @@ def separate_data(input_data):
             # Will need to pass through that filter in Android before feeding to model.
             mm_scale = preprocessing.MinMaxScaler().fit(x_window)
             x_window = mm_scale.transform(x_window)
+
             x_list.append(x_window)
             y_list.append(data_window_array[0, NUMBER_CHANNELS_TOTAL])
 
@@ -107,15 +107,13 @@ def load_data(data_directory, letters, selection):
         str_file_path = data_directory + "/*" + s + "*.mat"
         print(str_file_path)
         training_files = glob.glob(str_file_path)
-        # TODO: KEEP ONLY TRIALS 9:23:
-        print("training_files: ", training_files[selection])
-        for f in training_files[selection]:
+        # TODO: KEEP ONLY 'SELECTION' TRIALS:
+        training_files = np.asarray(training_files)[[selection]]
+        print("training_files: ", training_files)
+        for f in training_files:
             data_from_file = loadmat(f)  # Saved as mat_dict: Dictionary with variable names as keys:
             # Extract 'relevant_data':
             relevant_data = data_from_file.get(KEY_DATA_DICTIONARY)
-            # if data_array.shape[1] == relevant_data.shape[1]:
-            #     data_array = np.concatenate((data_array, relevant_data), axis=0)
-            # print(data_array.shape)
             x, y = separate_data(relevant_data)
             x_train_data = np.concatenate((x_train_data, x), axis=0)
             y_train_data = np.concatenate((y_train_data, y), axis=0)
@@ -213,7 +211,7 @@ def build_model(x, keep_prob, y, output_node_name):
     return train_step, cross_entropy, accuracy, merged_summary_op
 
 
-def train_and_test(x_train_data, y_train_data, x, keep_prob, y, train_step, accuracy, saver):
+def train_and_test(x_train_data, y_train_data, x_test_data, y_test_data, x, keep_prob, y, train_step, accuracy, saver):
     val_step = 0
     # split into data windows & store:
     x_train, x_test, y_train, y_test = train_test_split(x_train_data, y_train_data, train_size=0.8, random_state=1)
@@ -252,14 +250,14 @@ def train_and_test(x_train_data, y_train_data, x, keep_prob, y, train_step, accu
         # shape_original = x_test.shape
         test_accuracy = sess.run(accuracy, feed_dict={x: x_test, y: y_test, keep_prob: 1.0})  # original
         # test_accuracy = sess.run(accuracy, feed_dict={x: x_test, y: y_test, keep_prob: 0.5})
-        print("\n Testing Accuracy:", test_accuracy, "\n\n")
+        print("\n Validation Accuracy (full):", test_accuracy, "\n\n")
 
         # save temp checkpoint
         saver.save(sess, EXPORT_DIRECTORY + MODEL_NAME + '.ckpt')
 
         # run Test:
-        # print("Validation Accuracy:",
-        #       sess.run(accuracy, feed_dict={x: x_test_data, y: y_test_data, keep_prob: 0.5}))
+        print("Test Accuracy:",
+              sess.run(accuracy, feed_dict={x: x_test_data, y: y_test_data, keep_prob: 0.5}))
 
 
 def export_model(input_node_names, output_node_name):
@@ -295,11 +293,12 @@ def main():
     train_step, loss, accuracy, merged_summary_op = build_model(x, keep_prob, y_, output_node_name)
     saver = tf.train.Saver()
     data_directory = get_data_directory()
-    x_train_data, y_train_data = load_data(data_directory, ['a'], np.s_[8:24])
+    x_train_data, y_train_data = load_data(data_directory, ['d'], np.s_[8:24])  #
+    # 9, 10, 12, 13, 15, 16, 18, 19, 21, 22
     print("Training Data: X:", x_train_data.shape, " Y: ", y_train_data.shape)
-    x_test_data, y_test_data = load_data(data_directory, ['a'], np.s_[0:8])
+    x_test_data, y_test_data = load_data(data_directory, ['e'], np.s_[8:24])
     print("Test Data: X:", x_test_data.shape, " Y: ", y_test_data.shape)
-    train_and_test(x_train_data, y_train_data, x, keep_prob, y_, train_step, accuracy, saver)
+    train_and_test(x_train_data, y_train_data, x_test_data, y_test_data, x, keep_prob, y_, train_step, accuracy, saver)
     user_input = input('Export Current Model?')
     if user_input == "1" or user_input.lower() == "y":
         export_model([input_node_name, keep_prob_node_name], output_node_name)
