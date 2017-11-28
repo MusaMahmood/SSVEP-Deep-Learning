@@ -27,8 +27,9 @@ NUMBER_STEPS = 5000
 TRAIN_BATCH_SIZE = 256
 TEST_BATCH_SIZE = 64
 DATA_WINDOW_SIZE = 256
-MOVING_WINDOW_SHIFT = 50
+MOVING_WINDOW_SHIFT = 32
 NUMBER_DATA_CHANNELS = 2
+LEARNING_RATE = 1e-5  # 'Step size' on n-D optimization plane
 
 
 # METHODS:
@@ -150,7 +151,7 @@ def build_model(x, keep_prob, y, output_node_name):
 
     # training and reducing the cost/loss function
     cross_entropy = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=y, logits=y_conv))
-    train_step = tf.train.AdamOptimizer(1e-4).minimize(cross_entropy)
+    train_step = tf.train.AdamOptimizer(LEARNING_RATE).minimize(cross_entropy)
     # correct_prediction = tf.equal(tf.argmax(y_conv, 1), tf.argmax(y, 1))  #ORIGINAL
     correct_prediction = tf.equal(tf.argmax(outputs, 1), tf.argmax(y, 1))
 
