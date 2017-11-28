@@ -26,7 +26,7 @@ KEY_DATA_DICTIONARY = 'relevant_data'
 NUMBER_STEPS = 5000
 TRAIN_BATCH_SIZE = 256
 TEST_BATCH_SIZE = 64
-DATA_WINDOW_SIZE = 300
+DATA_WINDOW_SIZE = 256
 MOVING_WINDOW_SHIFT = 50
 NUMBER_DATA_CHANNELS = 2
 
@@ -127,11 +127,11 @@ def build_model(x, keep_prob, y, output_node_name):
     h_pool2 = max_pool_2x2(h_conv2)
 
     # fully connected layer1,the shape of the patch should be defined
-    W_fc1 = weight_variable([75 * 2 * 64, 1024])
+    W_fc1 = weight_variable([(DATA_WINDOW_SIZE//4) * 2 * 64, 1024])
     b_fc1 = bias_variable([1024])
 
     # the input should be shaped/flattened
-    h_pool2_flat = tf.reshape(h_pool2, [-1, 75 * 2 * 64])
+    h_pool2_flat = tf.reshape(h_pool2, [-1, (DATA_WINDOW_SIZE//4) * 2 * 64])
     h_fc1 = tf.nn.relu(tf.matmul(h_pool2_flat, W_fc1) + b_fc1)
 
     # fully connected layer2
