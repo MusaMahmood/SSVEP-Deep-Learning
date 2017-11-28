@@ -18,32 +18,60 @@ from tensorflow.python.tools import optimize_for_inference_lib
 
 # CONSTANTS:
 VERSION_NUMBER = 'v0.0.5'
-TRAINING_FOLDER_PATH = r'_data/S1copy'
+TRAINING_FOLDER_PATH = r'_data/S1copy/a'
+TEST_FOLDER_PATH = r'_data/S1copy/b'
 EXPORT_DIRECTORY = 'model_exports/' + VERSION_NUMBER + '/'
 MODEL_NAME = 'ssvep_net_2ch'
+KEY_DATA_DICTIONARY = 'relevant_data'
 NUMBER_STEPS = 5000
 TRAIN_BATCH_SIZE = 256
-VAL_BATCH_SIZE = 10
+TEST_BATCH_SIZE = 64
 DATA_WINDOW_SIZE = 300
-MOVING_WINDOW_SHIFT = 60
+MOVING_WINDOW_SHIFT = 50
 NUMBER_DATA_CHANNELS = 2
 
 
 # METHODS:
-def load_training_data():
-    # Initialize array that will hold training data
-    data_array = np.empty([0, 3], np.float64)
+def separate_data(input_data):
+    data_window_list = list(moving_window(input_data, DATA_WINDOW_SIZE, MOVING_WINDOW_SHIFT))
+    shape = np.asarray(data_window_list).shape
+    x_list = []
+    y_list = []
+    for data_window in data_window_list:
+        data_window_array = np.asarray(data_window)
+        count_match = np.count_nonzero(data_window_array[:, NUMBER_DATA_CHANNELS] ==
+                                       data_window_array[0, NUMBER_DATA_CHANNELS])
+        if count_match == shape[1]:
+            x_window = data_window_array[:, 0:NUMBER_DATA_CHANNELS:1]  # [0:2:1]
+            # TODO: USE SAME FILTER AS IN ANDROID (C++ filt params)
+            # Will need to pass through that filter in Android before feeding to model.
+            mm_scale = preprocessing.MinMaxScaler(feature_range=(-1, 1)).fit(x_window)
+            x_window = mm_scale.transform(x_window)
 
-    training_files = glob.glob(TRAINING_FOLDER_PATH+"/*.csv")
+            x_list.append(x_window)
+            y_list.append(data_window_array[0, NUMBER_DATA_CHANNELS])
+
+    # get unique class values and convert to dummy values
+    # convert lists to arrays; convert to 32-bit floating point
+    y_array = np.asarray(y_list)
+    x_array = np.asarray(x_list).astype(np.float32)
+    return x_array, y_array
+
+
+def load_data(data_directory):
+    x_train_data = np.empty([0, DATA_WINDOW_SIZE, NUMBER_DATA_CHANNELS], np.float32)
+    y_train_data = np.empty([0], np.float32)
+    training_files = glob.glob(data_directory + "/*.csv")
     for f in training_files:
         data_from_file = pd.read_csv(f, header=None)  # read from file
-        data_as_matrix = pd.DataFrame.as_matrix(data_from_file)  # convert to numpy array
-        print("Size of file ", f, " is ",  data_as_matrix.shape)
-        # If dimensionality matches, concatenate with data_array:
-        if data_array.shape[1] == data_as_matrix.shape[1]:
-            data_array = np.concatenate((data_array, data_as_matrix), axis=0)
-    print("data_array final shape: \n", data_array.shape)
-    return data_array
+        relevant_data = pd.DataFrame.as_matrix(data_from_file)  # convert to numpy array
+        x, y = separate_data(relevant_data)
+        x_train_data = np.concatenate((x_train_data, x), axis=0)
+        y_train_data = np.concatenate((y_train_data, y), axis=0)
+    y_train_data = np.asarray(pd.get_dummies(y_train_data).values).astype(np.float32)
+    # return data_array
+    print("Loaded Data Shape: X:", x_train_data.shape, " Y: ", y_train_data.shape)
+    return x_train_data, y_train_data
 
 
 def moving_window(data, length, step):
@@ -54,7 +82,7 @@ def moving_window(data, length, step):
 
 
 def model_input(input_node_name, keep_prob_node_name):
-    x = tf.placeholder(tf.float32, shape=[None, DATA_WINDOW_SIZE*NUMBER_DATA_CHANNELS], name=input_node_name)
+    x = tf.placeholder(tf.float32, shape=[None, DATA_WINDOW_SIZE, NUMBER_DATA_CHANNELS], name=input_node_name)
     keep_prob = tf.placeholder(tf.float32, name=keep_prob_node_name)
     y_ = tf.placeholder(tf.float32, shape=[None, 5])
     return x, keep_prob, y_
@@ -135,38 +163,17 @@ def build_model(x, keep_prob, y, output_node_name):
 
 def train(x, keep_prob, y, train_step, accuracy, saver):
     val_step = 0
-    loaded_data = load_training_data()
-    # split into data windows:
-    data_window_list = list(moving_window(loaded_data, DATA_WINDOW_SIZE, MOVING_WINDOW_SHIFT))
-    shape = np.asarray(data_window_list).shape
-    print("dataWindowList.shape (windows, window length, columns)", shape)
-    x_list = []
-    y_list = []
-    for data_window in data_window_list:
-        data_window_array = np.asarray(data_window)
-        # TODO: Replace 2 & other constants with NUMBER_DATA_CHANNELS as needed
-        count_match = np.count_nonzero(data_window_array[:, 2] == data_window_array[0, 2])
-        # print("count_match: ", count_match)
-        if count_match == shape[1]:
-            x_window = data_window_array[:, 0:2:1]
-            # TODO: NEED TO CHANGE PREPROCESSING TO BUTTERWORTH FILTER.
-            # USE SAME FILTER AS IN ANDROID (C++ filt params),
-            # Will need to pass through that filter in Android before feeding to model.
-            mm_scale = preprocessing.MinMaxScaler().fit(x_window)
-            x_window = mm_scale.transform(x_window)
-            x_list.append(x_window)
-            y_list.append(data_window_array[0, 2])
+    x_data, y_data = load_data(TRAINING_FOLDER_PATH)
+
+    x_val_data, y_val_data = load_data(TEST_FOLDER_PATH)
+
+    x_train, x_test, y_train, y_test = train_test_split(x_data, y_data, train_size=0.75, random_state=1)
 
     init_op = tf.global_variables_initializer()
+    config = tf.ConfigProto()
+    config.gpu_options.allow_growth = True
 
-    # get unique class values and convert to dummy values
-    # convert lists to arrays; convert to 32-bit floating point
-    y_array = np.asarray(pd.get_dummies(y_list).values).astype(np.float32)
-    x_array = np.asarray(x_list).astype(np.float32)
-
-    x_train, x_test, y_train, y_test = train_test_split(x_array, y_array, train_size=0.5, random_state=1)
-
-    with tf.Session() as sess:
+    with tf.Session(config=config) as sess:
         sess.run(init_op)
         # save model as pbtxt:
         tf.train.write_graph(sess.graph_def, EXPORT_DIRECTORY, MODEL_NAME + '.pbtxt', True)
@@ -174,37 +181,27 @@ def train(x, keep_prob, y, train_step, accuracy, saver):
         for i in range(NUMBER_STEPS):
             offset = (i * TRAIN_BATCH_SIZE) % (x_train.shape[0] - TRAIN_BATCH_SIZE)
             batch_x_train = x_train[offset:(offset + TRAIN_BATCH_SIZE)]
-            shape_original = batch_x_train.shape
-            # print("shape_original", shape_original)
-            batch_x_train = np.reshape(batch_x_train,
-                                       (shape_original[0], shape_original[1]*shape_original[2], -1)).squeeze()
-            # print("shape_new", batch_x_train.shape)
             batch_y_train = y_train[offset:(offset + TRAIN_BATCH_SIZE)]
             if i % 10 == 0:
-                # train_accuracy = accuracy.eval(feed_dict=
-                #                                {x: batch_x_train, y: batch_y_train, keep_prob: 1.0})  # ORIGINAL
                 train_accuracy = accuracy.eval(feed_dict={x: batch_x_train, y: batch_y_train, keep_prob: 1.0})
                 print("step %d, training accuracy %g" % (i, train_accuracy))
 
             if i % 20 == 0:
                 # Calculate batch loss and accuracy
-                offset = (val_step * VAL_BATCH_SIZE) % (x_test.shape[0] - VAL_BATCH_SIZE)
-                batch_x_val = x_test[offset:(offset + VAL_BATCH_SIZE), :, :]
-                shape_original = batch_x_val.shape
-                batch_x_val = np.reshape(batch_x_val,
-                                         (shape_original[0], shape_original[1] * shape_original[2], -1)).squeeze()
-                batch_y_val = y_test[offset:(offset + VAL_BATCH_SIZE), :]
+                offset = (val_step * TEST_BATCH_SIZE) % (x_test.shape[0] - TEST_BATCH_SIZE)
+                batch_x_val = x_test[offset:(offset + TEST_BATCH_SIZE), :, :]
+                batch_y_val = y_test[offset:(offset + TEST_BATCH_SIZE), :]
                 val_accuracy = accuracy.eval(feed_dict={x: batch_x_val, y: batch_y_val, keep_prob: 1.0})
                 print("Validation step %d, validation accuracy %g" % (val_step, val_accuracy))
                 val_step += 1
 
-            train_step.run(feed_dict={x: batch_x_train, y: batch_y_train, keep_prob: 0.15})
-        shape_original = x_test.shape
-        x_test = np.reshape(x_test, (shape_original[0], shape_original[1] * shape_original[2], -1)).squeeze()
-        test_accuracy = sess.run(accuracy, feed_dict={x: x_test, y: y_test, keep_prob: 1.0}) # original
-        # test_accuracy = sess.run(accuracy, feed_dict={x: x_test, y: y_test, keep_prob: 0.5})
-        print("\n Testing Accuracy:", test_accuracy, "\n\n")
+            train_step.run(feed_dict={x: batch_x_train, y: batch_y_train, keep_prob: 0.25})
 
+        # Run test data (entire set) to see accuracy.
+        test_accuracy = sess.run(accuracy, feed_dict={x: x_test, y: y_test, keep_prob: 1.0})  # original
+        print("\n Testing Accuracy:", test_accuracy, "\n\n")
+        # Holdout Validation Accuracy:
+        print("Holdout Validation Accuracy:", sess.run(accuracy, feed_dict={x: x_val_data, y: y_val_data, keep_prob: 1.0}))
         # save temp checkpoint
         saver.save(sess, EXPORT_DIRECTORY + MODEL_NAME + '.ckpt')
 
