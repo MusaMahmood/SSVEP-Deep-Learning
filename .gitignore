@@ -12,3 +12,5 @@ DATA/liblsl-Matlab/
 model_exports/
 *.npz
 DATA/output_csv/.idea/
+Tensorflow/ignore/
+Tensorflow/MNIST_data/
