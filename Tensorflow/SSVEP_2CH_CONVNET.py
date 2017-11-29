@@ -3,13 +3,15 @@
 # TF 1.2.1
 
 # IMPORTS:
-import pandas as pd
-import numpy as np
+import matplotlib.pyplot as p
 import tensorflow as tf
 import os.path as path
+import itertools as it
+import pandas as pd
+import numpy as np
 import os as os
 import glob
-import itertools as it
+import math
 
 from sklearn import preprocessing
 from sklearn.model_selection import train_test_split
@@ -31,6 +33,9 @@ MOVING_WINDOW_SHIFT = 32
 NUMBER_DATA_CHANNELS = 2
 LEARNING_RATE = 1e-5  # 'Step size' on n-D optimization plane
 
+# GLOBALS:
+# W_conv1 = weight_variable([5, 1, 1, 32])
+
 
 # METHODS:
 def separate_data(input_data):
@@ -46,7 +51,8 @@ def separate_data(input_data):
             x_window = data_window_array[:, 0:NUMBER_DATA_CHANNELS:1]  # [0:2:1]
             # TODO: USE SAME FILTER AS IN ANDROID (C++ filt params)
             # Will need to pass through that filter in Android before feeding to model.
-            mm_scale = preprocessing.MinMaxScaler(feature_range=(-1, 1)).fit(x_window)
+            # mm_scale = preprocessing.MinMaxScaler(feature_range=(-1, 1)).fit(x_window)
+            mm_scale = preprocessing.MinMaxScaler(feature_range=(0, 1)).fit(x_window)
             x_window = mm_scale.transform(x_window)
 
             x_list.append(x_window)
@@ -110,6 +116,22 @@ def max_pool_2x2(x):
                           strides=[1, 2, 1, 1], padding='SAME')
 
 
+def plot_nn_filter(units):
+    filters = units.shape[3]
+    p.figure(1, figsize=(5, 32))
+    n_columns = 6
+    n_rows = math.ceil(filters / n_columns) + 1
+    for i in range(filters):
+        p.subplot(n_rows, n_columns, i + 1)
+        p.title('Filter ' + str(i))
+        p.imshow(units[0, :, :, i], interpolation="nearest", cmap="gray")
+
+
+def get_activations(sess, x, layer, stimuli, keep_prob):
+    units = sess.run(layer, feed_dict={x: np.reshape(stimuli, [1, 784], order='F'), keep_prob: 1.0})
+    plot_nn_filter(units)
+
+
 def build_model(x, keep_prob, y, output_node_name):
     x_input = tf.reshape(x, [-1, DATA_WINDOW_SIZE, NUMBER_DATA_CHANNELS, 1])
 
@@ -152,17 +174,16 @@ def build_model(x, keep_prob, y, output_node_name):
     # training and reducing the cost/loss function
     cross_entropy = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=y, logits=y_conv))
     train_step = tf.train.AdamOptimizer(LEARNING_RATE).minimize(cross_entropy)
-    # correct_prediction = tf.equal(tf.argmax(y_conv, 1), tf.argmax(y, 1))  #ORIGINAL
     correct_prediction = tf.equal(tf.argmax(outputs, 1), tf.argmax(y, 1))
 
     accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
 
     merged_summary_op = tf.summary.merge_all()
 
-    return train_step, cross_entropy, accuracy, merged_summary_op
+    return train_step, cross_entropy, accuracy, merged_summary_op, W_fc2
 
 
-def train(x, keep_prob, y, train_step, accuracy, saver):
+def train(x, keep_prob, y, train_step, accuracy, saver, view_shape):
     val_step = 0
     x_data, y_data = load_data(TRAINING_FOLDER_PATH)
 
@@ -202,8 +223,15 @@ def train(x, keep_prob, y, train_step, accuracy, saver):
         test_accuracy = sess.run(accuracy, feed_dict={x: x_test, y: y_test, keep_prob: 1.0})  # original
         print("\n Testing Accuracy:", test_accuracy, "\n\n")
         # Holdout Validation Accuracy:
-        print("Holdout Validation Accuracy:", sess.run(accuracy, feed_dict={x: x_val_data, y: y_val_data, keep_prob: 1.0}))
+        print("Holdout Validation:", sess.run(accuracy, feed_dict={x: x_val_data, y: y_val_data, keep_prob: 1.0}))
         # save temp checkpoint
+        p.figure(1, figsize=(20, 20))
+        # n_columns = 5
+        # n_rows = 32
+        p.title("W_conv1")
+        # w_reshape = tf.reshape(view_shape, [5, 32])
+        w_reshape = sess.run(view_shape)
+        p.imshow(w_reshape, interpolation="nearest", cmap="gray")
         saver.save(sess, EXPORT_DIRECTORY + MODEL_NAME + '.ckpt')
 
 
@@ -211,14 +239,11 @@ def export_model(input_node_names, output_node_name):
     freeze_graph.freeze_graph(EXPORT_DIRECTORY + MODEL_NAME + '.pbtxt', None, False,
                               EXPORT_DIRECTORY + MODEL_NAME + '.ckpt', output_node_name, "save/restore_all",
                               "save/Const:0", EXPORT_DIRECTORY + '/frozen_' + MODEL_NAME + '.pb', True, "")
-
     input_graph_def = tf.GraphDef()
     with tf.gfile.Open(EXPORT_DIRECTORY + '/frozen_' + MODEL_NAME + '.pb', "rb") as f:
         input_graph_def.ParseFromString(f.read())
-
     output_graph_def = optimize_for_inference_lib.optimize_for_inference(
         input_graph_def, input_node_names, [output_node_name], tf.float32.as_datatype_enum)
-
     with tf.gfile.FastGFile(EXPORT_DIRECTORY + '/opt_' + MODEL_NAME + '.pb', "wb") as f:
         f.write(output_graph_def.SerializeToString())
 
@@ -238,11 +263,11 @@ def main():
 
     x, keep_prob, y_ = model_input(input_node_name, keep_prob_node_name)
 
-    train_step, loss, accuracy, merged_summary_op = build_model(x, keep_prob, y_, output_node_name)
+    train_step, loss, accuracy, merged_summary_op, view_shape = build_model(x, keep_prob, y_, output_node_name)
 
     saver = tf.train.Saver()
 
-    train(x, keep_prob, y_, train_step, accuracy, saver)
+    train(x, keep_prob, y_, train_step, accuracy, saver, view_shape=view_shape)
 
     user_input = input('Export Current Model?')
 

@@ -11,6 +11,8 @@ import os.path as path
 import itertools as it
 import tensorflow as tf
 import pandas as pd
+import matplotlib.pyplot as plt
+import math
 
 from scipy.io import loadmat
 from sklearn import preprocessing
@@ -20,19 +22,19 @@ from tensorflow.python.tools import optimize_for_inference_lib
 
 # CONSTANTS:
 # SPECIFIC_CHANNEL_SELECTION = np.asarray([120, 121, 122, 123, 124, 125, 126, 138, 149, 158, 167, 175, 187])
-SPECIFIC_CHANNEL_SELECTION = np.asarray(range(114, 132))
+SPECIFIC_CHANNEL_SELECTION = np.asarray(range(120, 136))
 NUMBER_CHANNELS_SELECT = SPECIFIC_CHANNEL_SELECTION.shape[0]  # Selects first int in shape
 
 VERSION_NUMBER = 'v0.0.1'
-DATA_FOLDER_PATH = r'/DATA/output_csv/S011'
+DATA_FOLDER_PATH = r'/DATA/output_csv/S001_f'
 KEY_DATA_DICTIONARY = 'relevant_data'
 EXPORT_DIRECTORY = 'model_exports/' + VERSION_NUMBER + '/'
 MODEL_NAME = 'ssvep_net_14ch'
 NUMBER_STEPS = 5000
-TRAIN_BATCH_SIZE = 64
-VAL_BATCH_SIZE = 32
-DATA_WINDOW_SIZE = 300
-MOVING_WINDOW_SHIFT = 50
+TRAIN_BATCH_SIZE = 256
+VAL_BATCH_SIZE = 64
+DATA_WINDOW_SIZE = 500
+MOVING_WINDOW_SHIFT = 25
 
 NUMBER_CHANNELS_TOTAL = 256
 NUMBER_CLASSES = 5
@@ -214,7 +216,7 @@ def build_model(x, keep_prob, y, output_node_name):
 def train_and_test(x_train_data, y_train_data, x_test_data, y_test_data, x, keep_prob, y, train_step, accuracy, saver):
     val_step = 0
     # split into data windows & store:
-    x_train, x_test, y_train, y_test = train_test_split(x_train_data, y_train_data, train_size=0.8, random_state=1)
+    x_train, x_test, y_train, y_test = train_test_split(x_train_data, y_train_data, train_size=0.75, random_state=1)
     print("train_split x:", x_train.shape, " y: ", y_train.shape)
     print("test_split x:", x_test.shape, " y: ", y_test.shape)
     init_op = tf.global_variables_initializer()
@@ -246,7 +248,7 @@ def train_and_test(x_train_data, y_train_data, x_test_data, y_test_data, x, keep
                 print("Validation step %d, validation accuracy %g" % (val_step, val_accuracy))
                 val_step += 1
 
-            train_step.run(feed_dict={x: batch_x_train, y: batch_y_train, keep_prob: 0.15})
+            train_step.run(feed_dict={x: batch_x_train, y: batch_y_train, keep_prob: 0.25})
         # shape_original = x_test.shape
         test_accuracy = sess.run(accuracy, feed_dict={x: x_test, y: y_test, keep_prob: 1.0})  # original
         # test_accuracy = sess.run(accuracy, feed_dict={x: x_test, y: y_test, keep_prob: 0.5})
@@ -257,7 +259,7 @@ def train_and_test(x_train_data, y_train_data, x_test_data, y_test_data, x, keep
 
         # run Test:
         print("Test Accuracy:",
-              sess.run(accuracy, feed_dict={x: x_test_data, y: y_test_data, keep_prob: 0.5}))
+              sess.run(accuracy, feed_dict={x: x_test_data, y: y_test_data, keep_prob: 1.0}))
 
 
 def export_model(input_node_names, output_node_name):
@@ -280,6 +282,22 @@ def export_model(input_node_names, output_node_name):
     print("2 - Android Optimized Model:", EXPORT_DIRECTORY + '/opt_' + MODEL_NAME + '.pb')
 
 
+def plot_nn_filter(units):
+    filters = units.shape[3]
+    plt.figure(1, figsize=(20, 20))
+    n_columns = 6
+    n_rows = math.ceil(filters / n_columns) + 1
+    for i in range(filters):
+        plt.subplot(n_rows, n_columns, i + 1)
+        plt.title('Filter ' + str(i))
+        plt.imshow(units[0, :, :, i], interpolation="nearest", cmap="gray")
+
+
+def get_activations(sess, layer, x, keep_prob, stimuli):
+    units = sess.run(layer, feed_dict={x: np.reshape(stimuli, [1, 784], order='F'), keep_prob: 1.0})
+    plot_nn_filter(units)
+
+
 def main():
     # Configure Export Folder for Model:
     output_folder_name = 'exports'
@@ -293,10 +311,9 @@ def main():
     train_step, loss, accuracy, merged_summary_op = build_model(x, keep_prob, y_, output_node_name)
     saver = tf.train.Saver()
     data_directory = get_data_directory()
-    x_train_data, y_train_data = load_data(data_directory, ['d'], np.s_[8:24])  #
-    # 9, 10, 12, 13, 15, 16, 18, 19, 21, 22
+    x_train_data, y_train_data = load_data(data_directory, ['a'], np.s_[0:24])  # 9, 10, 12, 13, 15, 16, 18, 19, 21, 22
     print("Training Data: X:", x_train_data.shape, " Y: ", y_train_data.shape)
-    x_test_data, y_test_data = load_data(data_directory, ['e'], np.s_[8:24])
+    x_test_data, y_test_data = load_data(data_directory, ['b'], np.s_[8:24])
     print("Test Data: X:", x_test_data.shape, " Y: ", y_test_data.shape)
     train_and_test(x_train_data, y_train_data, x_test_data, y_test_data, x, keep_prob, y_, train_step, accuracy, saver)
     user_input = input('Export Current Model?')
