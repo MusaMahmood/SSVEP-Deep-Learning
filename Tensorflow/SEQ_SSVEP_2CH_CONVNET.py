@@ -3,7 +3,7 @@
 # TF 1.2.1
 
 # IMPORTS:
-import matplotlib.pyplot as p
+# import matplotlib.pyplot as p
 import tensorflow as tf
 import os.path as path
 import itertools as it
@@ -21,8 +21,10 @@ from tensorflow.python.tools import optimize_for_inference_lib
 
 # CONSTANTS:
 TIMESTAMP_START = datetime.datetime.fromtimestamp(time.time()).strftime('%Y%m%d_%H.%M.%S')
-VERSION_NUMBER = 'v0.0.5'
+VERSION_NUMBER = 'v0.1.0'
 # DESCRIPTION_TRAINING_DATA = '_h1set_'
+# TRAINING_FOLDER_PATH = r'_data/S1copy/ah'
+# TEST_FOLDER_PATH = r'_data/S1copy/bh'
 DESCRIPTION_TRAINING_DATA = '_allset_'
 TRAINING_FOLDER_PATH = r'_data/S1copy/a'
 TEST_FOLDER_PATH = r'_data/S1copy/b'
@@ -48,16 +50,15 @@ BIAS_VAR_CL1 = 64
 BIAS_VAR_CL2 = 128
 
 WEIGHT_VAR_CL1 = [NUMBER_CLASSES, NUMBER_DATA_CHANNELS, 1, BIAS_VAR_CL1]  # [5, NUMBER_DATA_CHANNELS, 1, 32]
-WEIGHT_VAR_CL2 = [NUMBER_CLASSES, NUMBER_DATA_CHANNELS, BIAS_VAR_CL1, BIAS_VAR_CL2] # [5, NUMBER_DATA_CHANNELS, 32, 64]
+WEIGHT_VAR_CL2 = [NUMBER_CLASSES, NUMBER_DATA_CHANNELS, BIAS_VAR_CL1, BIAS_VAR_CL2]  # [5, NUMBER_DATA_CHANNELS, 32, 64]
 
-WEIGHT_VAR_FC1 = [(DATA_WINDOW_SIZE//4) * NUMBER_DATA_CHANNELS * BIAS_VAR_CL2, BIAS_VAR_CL1**2]
+WEIGHT_VAR_FC1 = [(DATA_WINDOW_SIZE // 4) * NUMBER_DATA_CHANNELS * BIAS_VAR_CL2, BIAS_VAR_CL1 ** 2]
 MAX_POOL_FLAT_SHAPE_FC1 = [-1, NUMBER_DATA_CHANNELS * (DATA_WINDOW_SIZE // 4) * BIAS_VAR_CL2]
 BIAS_VAR_FC1 = [(BIAS_VAR_CL1 ** 2)]
 BIAS_VAR_FC2 = [(BIAS_VAR_CL1 ** 2) * 2]
 WEIGHT_VAR_FC2 = [*BIAS_VAR_FC1, *BIAS_VAR_FC2]
 WEIGHT_VAR_FC_OUTPUT = [*BIAS_VAR_FC2, NUMBER_CLASSES]
 BIAS_VAR_FC_OUTPUT = [NUMBER_CLASSES]
-
 
 # Start Script Here:
 output_folder_name = 'exports'
@@ -211,19 +212,18 @@ merged_summary_op = tf.summary.merge_all()
 
 saver = tf.train.Saver()  # Initialize tf Saver
 
-# TRAIN ROUTINE #
-
-val_step = 0
+# Load Data:
 x_data, y_data = load_data(TRAINING_FOLDER_PATH)
-
 x_val_data, y_val_data = load_data(TEST_FOLDER_PATH)
-
+# Split training set:
 x_train, x_test, y_train, y_test = train_test_split(x_data, y_data, train_size=0.75, random_state=1)
 
+# TRAIN ROUTINE #
 init_op = tf.global_variables_initializer()
 config = tf.ConfigProto()
 config.gpu_options.allow_growth = True
 
+val_step = 0
 with tf.Session(config=config) as sess:
     sess.run(init_op)
     # save model as pbtxt:
@@ -254,31 +254,46 @@ with tf.Session(config=config) as sess:
     # Holdout Validation Accuracy:
     print("Holdout Validation:", sess.run(accuracy, feed_dict={x: x_val_data, y: y_val_data, keep_prob: 1.0}))
 
-    # ask politely to export model:
-    user_input = input('Graph Current Model?')
-    if user_input == "1" or user_input.lower() == "y":
-        # Load vars:
+    # Comment to space things out:
+    # Experimental Stuff:
+    x_0 = np.zeros((1, DATA_WINDOW_SIZE, NUMBER_DATA_CHANNELS), dtype=np.float32)
+    print("Model Dimensions: ")
+    print("h_conv1: ", sess.run(h_conv1, feed_dict={x: x_0, keep_prob: 1.0}).shape)
+    print("h_conv2: ", sess.run(h_conv2, feed_dict={x: x_0, keep_prob: 1.0}).shape)
+    print("FC1: ", sess.run(h_fc1, feed_dict={x: x_0, keep_prob: 1.0}).shape)
+    print("FC2: ", sess.run(h_fc2, feed_dict={x: x_0, keep_prob: 1.0}).shape)
+    print("y_conv: ", sess.run(y_conv, feed_dict={x: x_0, keep_prob: 1.0}).shape)
+    # print("outputs: ", sess.run(outputs, feed_dict={x: x_0, keep_prob: 1.0}))
+    # Get one sample and see what it outputs (Activations?) ?
+    for i in range(x_val_data.shape[0]):
+        x_0 = np.reshape(x_val_data[i, :, :], [1, DATA_WINDOW_SIZE, NUMBER_DATA_CHANNELS])
+        print("outputs #: ", str(i), sess.run(outputs, feed_dict={x: x_0, keep_prob: 1.0}))
 
-        # Figure 1: W_conv1
+    # Save First Conv Hidden layer to x CSV files: shape[3] is the # of weights
+    x_0 = np.reshape(x_val_data[1, :, :], [1, DATA_WINDOW_SIZE, NUMBER_DATA_CHANNELS])
+    y_0 = np.reshape(y_val_data[1, :], [1, NUMBER_CLASSES])
 
-        keys = ['relevant_data']
-        w_reshape = np.reshape(sess.run(W_conv1), [NUMBER_CLASSES*NUMBER_DATA_CHANNELS, BIAS_VAR_CL1])
-        pd.DataFrame(w_reshape).to_csv(
-            EXPORT_DIRECTORY + 'w_conv1' + DESCRIPTION_TRAINING_DATA + TIMESTAMP_START + '.csv',
-            index=False, header=False)
+    h_conv1_np = sess.run(h_conv1, feed_dict={x: x_0, keep_prob: 1.0})
+    image_output_folder_name = EXPORT_DIRECTORY + DESCRIPTION_TRAINING_DATA + TIMESTAMP_START + '/' + 'h_conv1/'
+    os.makedirs(image_output_folder_name)
+    for i in range(h_conv1_np.shape[3]):
+        filename = image_output_folder_name + 'h_conv1_' + str(i) + '.csv'
+        w_reshape = np.reshape(h_conv1_np[:, :, :, i], [DATA_WINDOW_SIZE, NUMBER_DATA_CHANNELS])
+        pd.DataFrame(w_reshape).to_csv(filename, index=False, header=False)
+
+    h_conv2_np = sess.run(h_conv2, feed_dict={x: x_0, keep_prob: 1.0})
+    image_output_folder_name = EXPORT_DIRECTORY + DESCRIPTION_TRAINING_DATA + TIMESTAMP_START + '/' + 'h_conv2/'
+    os.makedirs(image_output_folder_name)
+    for i in range(h_conv2_np.shape[3]):
+        filename = image_output_folder_name + 'h_conv2_' + str(i) + '.csv'
+        w_reshape = np.reshape(h_conv2_np[:, :, :, i], [DATA_WINDOW_SIZE // 2, NUMBER_DATA_CHANNELS])
+        pd.DataFrame(w_reshape).to_csv(filename, index=False, header=False)
+
         # p.figure(1, figsize=(20, 20))
         # p.title("W_conv1")
         # p.imshow(w_reshape, interpolation="nearest", cmap="gray")
-        # Figure 2: W_conv2
-        # p.figure(2, figsize=(20, 20))
-        # p.title("W_conv2")
-        # for sp in range(NUMBER_CLASSES):
-        #     w_reshape = np.reshape(sess.run(W_conv2)[sp, :, :, :], [BIAS_VAR_CL1, BIAS_VAR_CL2])
-        #     p.subplot(1, NUMBER_CLASSES, sp+1)
-        #     p.title('Filter '+str(sp))
-        #     p.imshow(w_reshape, interpolation="nearest", cmap="gray")
-        # TODO: USE SUBPLOTS for 3+Dimension wts:
-    # user_input = input('Export Current Model?')
-    # if user_input == "1" or user_input.lower() == "y":
-    #     saver.save(sess, EXPORT_DIRECTORY + MODEL_NAME + '.ckpt')
-    #     export_model([input_node_name, keep_prob_node_name], output_node_name)
+
+user_input = input('Export Current Model?')
+if user_input == "1" or user_input.lower() == "y":
+    saver.save(sess, EXPORT_DIRECTORY + MODEL_NAME + '.ckpt')
+    export_model([input_node_name, keep_prob_node_name], output_node_name)

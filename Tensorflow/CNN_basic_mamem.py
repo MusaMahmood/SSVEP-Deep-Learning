@@ -11,8 +11,7 @@ import os.path as path
 import itertools as it
 import tensorflow as tf
 import pandas as pd
-import matplotlib.pyplot as plt
-import math
+# import matplotlib.pyplot as plt
 
 from scipy.io import loadmat
 from sklearn import preprocessing
@@ -282,22 +281,6 @@ def export_model(input_node_names, output_node_name):
     print("2 - Android Optimized Model:", EXPORT_DIRECTORY + '/opt_' + MODEL_NAME + '.pb')
 
 
-def plot_nn_filter(units):
-    filters = units.shape[3]
-    plt.figure(1, figsize=(20, 20))
-    n_columns = 6
-    n_rows = math.ceil(filters / n_columns) + 1
-    for i in range(filters):
-        plt.subplot(n_rows, n_columns, i + 1)
-        plt.title('Filter ' + str(i))
-        plt.imshow(units[0, :, :, i], interpolation="nearest", cmap="gray")
-
-
-def get_activations(sess, layer, x, keep_prob, stimuli):
-    units = sess.run(layer, feed_dict={x: np.reshape(stimuli, [1, 784], order='F'), keep_prob: 1.0})
-    plot_nn_filter(units)
-
-
 def main():
     # Configure Export Folder for Model:
     output_folder_name = 'exports'
@@ -311,9 +294,9 @@ def main():
     train_step, loss, accuracy, merged_summary_op = build_model(x, keep_prob, y_, output_node_name)
     saver = tf.train.Saver()
     data_directory = get_data_directory()
-    x_train_data, y_train_data = load_data(data_directory, ['a'], np.s_[0:24])  # 9, 10, 12, 13, 15, 16, 18, 19, 21, 22
+    x_train_data, y_train_data = load_data(data_directory, ['a'], np.s_[8:24])  # 9, 10, 12, 13, 15, 16, 18, 19, 21, 22
     print("Training Data: X:", x_train_data.shape, " Y: ", y_train_data.shape)
-    x_test_data, y_test_data = load_data(data_directory, ['b'], np.s_[8:24])
+    x_test_data, y_test_data = load_data(data_directory, ['a'], np.s_[0:9])
     print("Test Data: X:", x_test_data.shape, " Y: ", y_test_data.shape)
     train_and_test(x_train_data, y_train_data, x_test_data, y_test_data, x, keep_prob, y_, train_step, accuracy, saver)
     user_input = input('Export Current Model?')
