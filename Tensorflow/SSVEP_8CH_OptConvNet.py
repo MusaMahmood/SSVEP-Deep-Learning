@@ -3,64 +3,143 @@
 # TF 1.2.1
 
 # IMPORTS:
-import pandas as pd
-import numpy as np
+# import matplotlib.pyplot as p
 import tensorflow as tf
 import os.path as path
-import os as os
-import glob
 import itertools as it
+import pandas as pd
+import numpy as np
+import os as os
+import datetime
+import glob
+import time
 
+from scipy.io import loadmat
 from sklearn import preprocessing
 from sklearn.model_selection import train_test_split
 from tensorflow.python.tools import freeze_graph
 from tensorflow.python.tools import optimize_for_inference_lib
 
 # CONSTANTS:
-VERSION_NUMBER = 'v0.0.5'
-TRAINING_FOLDER_PATH = r'_data/S1copy'
+TIMESTAMP_START = datetime.datetime.fromtimestamp(time.time()).strftime('%Y%m%d_%H.%M.%S')
+VERSION_NUMBER = 'v0.1.1'
+# DESCRIPTION_TRAINING_DATA = '_h1set_'
+# TRAINING_FOLDER_PATH = r'_data/S1copy/ah'
+# TEST_FOLDER_PATH = r'_data/S1copy/bh'
+DESCRIPTION_TRAINING_DATA = '_allset_'
+TRAINING_FOLDER_PATH = r'_data/RobertH/fixed4class_train'
+TEST_FOLDER_PATH = r'_data/RobertH/fixed4class_test'
 EXPORT_DIRECTORY = 'model_exports/' + VERSION_NUMBER + '/'
-MODEL_NAME = 'ssvep_net_2ch'
+MODEL_NAME = 'ssvep_net_8ch'
+KEY_DATA_DICTIONARY = 'relevant_data'
 NUMBER_STEPS = 5000
-TRAIN_BATCH_SIZE = 256
-VAL_BATCH_SIZE = 10
-DATA_WINDOW_SIZE = 300
-MOVING_WINDOW_SHIFT = 60
-NUMBER_DATA_CHANNELS = 2
+TRAIN_BATCH_SIZE = 128
+TEST_BATCH_SIZE = 64
+DATA_WINDOW_SIZE = 256
+MOVING_WINDOW_SHIFT = 32
+NUMBER_DATA_CHANNELS = 8  # 2
+LEARNING_RATE = 1e-5  # 'Step size' on n-D optimization plane
+NUMBER_CLASSES = 4  # TODO: DON"T FORGET THIS!
 
 
-# METHODS:
-def load_training_data():
-    # Initialize array that will hold training data
-    data_array = np.empty([0, 3], np.float64)
+# FOR MODEL DESIGN
+STRIDE_CONV2D = [1, 1, 1, 1]
+MAX_POOL_KSIZE = [1, 2, 1, 1]
+MAX_POOL_STRIDE = [1, 2, 1, 1]
 
-    training_files = glob.glob(TRAINING_FOLDER_PATH+"/*.csv")
-    for f in training_files:
-        data_from_file = pd.read_csv(f, header=None)  # read from file
-        data_as_matrix = pd.DataFrame.as_matrix(data_from_file)  # convert to numpy array
-        print("Size of file ", f, " is ",  data_as_matrix.shape)
-        # If dimensionality matches, concatenate with data_array:
-        if data_array.shape[1] == data_as_matrix.shape[1]:
-            data_array = np.concatenate((data_array, data_as_matrix), axis=0)
-    print("data_array final shape: \n", data_array.shape)
-    return data_array
+BIAS_VAR_CL1 = 64
+BIAS_VAR_CL2 = 72
+
+WEIGHT_VAR_CL1 = [NUMBER_CLASSES, NUMBER_DATA_CHANNELS, 1, BIAS_VAR_CL1]  # [5, NUMBER_DATA_CHANNELS, 1, 32]
+WEIGHT_VAR_CL2 = [NUMBER_CLASSES, NUMBER_DATA_CHANNELS, BIAS_VAR_CL1, BIAS_VAR_CL2]  # [5, NUMBER_DATA_CHANNELS, 32, 64]
+
+WEIGHT_VAR_FC1 = [(DATA_WINDOW_SIZE // 4) * NUMBER_DATA_CHANNELS * BIAS_VAR_CL2, BIAS_VAR_CL1 ** 2]
+MAX_POOL_FLAT_SHAPE_FC1 = [-1, NUMBER_DATA_CHANNELS * (DATA_WINDOW_SIZE // 4) * BIAS_VAR_CL2]
+BIAS_VAR_FC1 = [(BIAS_VAR_CL1 ** 2)]
+BIAS_VAR_FC2 = [(BIAS_VAR_CL1 ** 2) * 2]
+WEIGHT_VAR_FC2 = [*BIAS_VAR_FC1, *BIAS_VAR_FC2]
+WEIGHT_VAR_FC_OUTPUT = [*BIAS_VAR_FC2, NUMBER_CLASSES]
+BIAS_VAR_FC_OUTPUT = [NUMBER_CLASSES]
+
+# Start Script Here:
+output_folder_name = 'exports'
+if not path.exists(output_folder_name):
+    os.mkdir(output_folder_name)
+input_node_name = 'input'
+keep_prob_node_name = 'keep_prob'
+output_node_name = 'output'
 
 
+# Data Loading/Saving Methods:
 def moving_window(data, length, step):
     # Prepare windows of 'length'
     streams = it.tee(data, length)
     # Use step of step, but don't skip any (overlap)
-    return zip(*[it.islice(stream, i, None, step) for stream, i in zip(streams, it.count(step=1))])
+    return zip(*[it.islice(stream, i_, None, step) for stream, i_ in zip(streams, it.count(step=1))])
 
 
-def model_input(input_node_name, keep_prob_node_name):
-    x = tf.placeholder(tf.float32, shape=[None, DATA_WINDOW_SIZE*NUMBER_DATA_CHANNELS], name=input_node_name)
-    keep_prob = tf.placeholder(tf.float32, name=keep_prob_node_name)
-    y_ = tf.placeholder(tf.float32, shape=[None, 5])
-    return x, keep_prob, y_
+def separate_data(input_data):
+    data_window_list = list(moving_window(input_data, DATA_WINDOW_SIZE, MOVING_WINDOW_SHIFT))
+    shape = np.asarray(data_window_list).shape
+    x_list = []
+    y_list = []
+    for data_window in data_window_list:
+        data_window_array = np.asarray(data_window)
+        count_match = np.count_nonzero(data_window_array[:, NUMBER_DATA_CHANNELS] ==
+                                       data_window_array[0, NUMBER_DATA_CHANNELS])
+        if count_match == shape[1]:
+            x_window = data_window_array[:, 0:NUMBER_DATA_CHANNELS:1]  # [0:2:1]
+            # TODO: USE SAME FILTER AS IN ANDROID (C++ filt params)
+            # Will need to pass through that filter in Android before feeding to model.
+            # mm_scale = preprocessing.MinMaxScaler(feature_range=(-1, 1)).fit(x_window)
+            mm_scale = preprocessing.MinMaxScaler(feature_range=(0, 1)).fit(x_window)
+            x_window = mm_scale.transform(x_window)
+
+            x_list.append(x_window)
+            y_list.append(data_window_array[0, NUMBER_DATA_CHANNELS])
+
+    # get unique class values and convert to dummy values
+    # convert lists to arrays; convert to 32-bit floating point
+    y_array = np.asarray(y_list)
+    x_array = np.asarray(x_list).astype(np.float32)
+    return x_array, y_array
 
 
-# weights and bias functions for convolution
+def load_data(data_directory):
+    x_train_data = np.empty([0, DATA_WINDOW_SIZE, NUMBER_DATA_CHANNELS], np.float32)
+    y_train_data = np.empty([0], np.float32)
+    training_files = glob.glob(data_directory + "/*.mat")
+    for f in training_files:
+        # data_from_file = pd.read_csv(f, header=None)  # read from file
+        # relevant_data = pd.DataFrame.as_matrix(data_from_file)  # convert to numpy array
+        relevant_data = loadmat(f).get(KEY_DATA_DICTIONARY)
+        x_array, y_array = separate_data(relevant_data)
+        x_train_data = np.concatenate((x_train_data, x_array), axis=0)
+        y_train_data = np.concatenate((y_train_data, y_array), axis=0)
+    y_train_data = np.asarray(pd.get_dummies(y_train_data).values).astype(np.float32)
+    # return data_array
+    print("Loaded Data Shape: X:", x_train_data.shape, " Y: ", y_train_data.shape)
+    return x_train_data, y_train_data
+
+
+def export_model(input_node_names, output_node_name_internal):
+    freeze_graph.freeze_graph(EXPORT_DIRECTORY + MODEL_NAME + '.pbtxt', None, False,
+                              EXPORT_DIRECTORY + MODEL_NAME + '.ckpt', output_node_name_internal, "save/restore_all",
+                              "save/Const:0", EXPORT_DIRECTORY + '/frozen_' + MODEL_NAME + '.pb', True, "")
+    input_graph_def = tf.GraphDef()
+    with tf.gfile.Open(EXPORT_DIRECTORY + '/frozen_' + MODEL_NAME + '.pb', "rb") as f:
+        input_graph_def.ParseFromString(f.read())
+    output_graph_def = optimize_for_inference_lib.optimize_for_inference(
+        input_graph_def, input_node_names, [output_node_name_internal], tf.float32.as_datatype_enum)
+    with tf.gfile.FastGFile(EXPORT_DIRECTORY + '/opt_' + MODEL_NAME + '.pb', "wb") as f:
+        f.write(output_graph_def.SerializeToString())
+
+    print("Graph Saved - Output Directories: ")
+    print("1 - Standard Frozen Model:", EXPORT_DIRECTORY + '/frozen_' + MODEL_NAME + '.pb')
+    print("2 - Android Optimized Model:", EXPORT_DIRECTORY + '/opt_' + MODEL_NAME + '.pb')
+
+
+# Model Building Macros: #
 def weight_variable(shape):
     initial = tf.truncated_normal(shape, stddev=0.1)
     return tf.Variable(initial)
@@ -72,186 +151,151 @@ def bias_variable(shape):
 
 
 # Convolution and max-pooling functions
-def conv2d(x, Weights):
-    return tf.nn.conv2d(x, Weights, strides=[1, 1, 1, 1], padding='SAME')
+def conv2d(x_, weights):
+    return tf.nn.conv2d(x_, weights, strides=STRIDE_CONV2D, padding='SAME')
 
 
-def max_pool_2x2(x):
-    return tf.nn.max_pool(x, ksize=[1, 2, 1, 1],
-                          strides=[1, 2, 1, 1], padding='SAME')
+def max_pool_2x2(x_):
+    return tf.nn.max_pool(x_, ksize=MAX_POOL_KSIZE,
+                          strides=MAX_POOL_STRIDE, padding='SAME')
 
 
-def build_model(x, keep_prob, y, output_node_name):
-    x_input = tf.reshape(x, [-1, DATA_WINDOW_SIZE, NUMBER_DATA_CHANNELS, 1])
+# MODEL INPUT #
+x = tf.placeholder(tf.float32, shape=[None, DATA_WINDOW_SIZE, NUMBER_DATA_CHANNELS], name=input_node_name)
+keep_prob = tf.placeholder(tf.float32, name=keep_prob_node_name)
+y = tf.placeholder(tf.float32, shape=[None, NUMBER_CLASSES])
 
-    # first convolution and pooling
-    W_conv1 = weight_variable([5, 1, 1, 32])
-    b_conv1 = bias_variable([32])
+x_input = tf.reshape(x, [-1, DATA_WINDOW_SIZE, NUMBER_DATA_CHANNELS, 1])
 
-    h_conv1 = tf.nn.relu(conv2d(x_input, W_conv1) + b_conv1)
-    h_pool1 = max_pool_2x2(h_conv1)
+# first convolution and pooling
+W_conv1 = weight_variable(WEIGHT_VAR_CL1)
+b_conv1 = bias_variable([BIAS_VAR_CL1])
 
-    # second convolution and pooling
-    W_conv2 = weight_variable([5, 1, 32, 64])
-    b_conv2 = bias_variable([64])
+h_conv1 = tf.nn.relu(conv2d(x_input, W_conv1) + b_conv1)
+h_pool1 = max_pool_2x2(h_conv1)
 
-    h_conv2 = tf.nn.relu(conv2d(h_pool1, W_conv2) + b_conv2)
-    h_pool2 = max_pool_2x2(h_conv2)
+# second convolution and pooling
+W_conv2 = weight_variable(WEIGHT_VAR_CL2)
+b_conv2 = bias_variable([BIAS_VAR_CL2])
 
-    # fully connected layer1,the shape of the patch should be defined
-    W_fc1 = weight_variable([75 * 2 * 64, 1024])
-    b_fc1 = bias_variable([1024])
+h_conv2 = tf.nn.relu(conv2d(h_pool1, W_conv2) + b_conv2)
+h_pool2 = max_pool_2x2(h_conv2)
 
-    # the input should be shaped/flattened
-    h_pool2_flat = tf.reshape(h_pool2, [-1, 75 * 2 * 64])
-    h_fc1 = tf.nn.relu(tf.matmul(h_pool2_flat, W_fc1) + b_fc1)
+# fully connected layer1,the shape of the patch should be defined
+W_fc1 = weight_variable(WEIGHT_VAR_FC1)
+b_fc1 = bias_variable(BIAS_VAR_FC1)
 
-    # fully connected layer2
-    W_fc2 = weight_variable([1024, 2048])
-    b_fc2 = bias_variable([2048])
-    h_fc2 = tf.nn.relu(tf.matmul(h_fc1, W_fc2) + b_fc2)
+# the input should be shaped/flattened
+h_pool2_flat = tf.reshape(h_pool2, MAX_POOL_FLAT_SHAPE_FC1)
+h_fc1 = tf.nn.relu(tf.matmul(h_pool2_flat, W_fc1) + b_fc1)
 
-    h_fc2_drop = tf.nn.dropout(h_fc2, keep_prob)
+# fully connected layer2
+W_fc2 = weight_variable(WEIGHT_VAR_FC2)
+b_fc2 = bias_variable(BIAS_VAR_FC2)
+h_fc2 = tf.nn.relu(tf.matmul(h_fc1, W_fc2) + b_fc2)
 
-    # weight and bias of the output layer
-    W_fco = weight_variable([2048, 5])
-    b_fco = bias_variable([5])
+h_fc2_drop = tf.nn.dropout(h_fc2, keep_prob)
 
-    y_conv = tf.matmul(h_fc2_drop, W_fco) + b_fco
-    outputs = tf.nn.softmax(y_conv, name=output_node_name)
+# weight and bias of the output layer
+W_fco = weight_variable(WEIGHT_VAR_FC_OUTPUT)
+b_fco = bias_variable(BIAS_VAR_FC_OUTPUT)
 
-    # training and reducing the cost/loss function
-    cross_entropy = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=y, logits=y_conv))
-    train_step = tf.train.AdamOptimizer(1e-4).minimize(cross_entropy)
-    # correct_prediction = tf.equal(tf.argmax(y_conv, 1), tf.argmax(y, 1))  #ORIGINAL
-    correct_prediction = tf.equal(tf.argmax(outputs, 1), tf.argmax(y, 1))
+y_conv = tf.matmul(h_fc2_drop, W_fco) + b_fco
+outputs = tf.nn.softmax(y_conv, name=output_node_name)
 
-    accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
+# training and reducing the cost/loss function
+cross_entropy = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=y, logits=y_conv))
+train_step = tf.train.AdamOptimizer(LEARNING_RATE).minimize(cross_entropy)
+correct_prediction = tf.equal(tf.argmax(outputs, 1), tf.argmax(y, 1))
 
-    merged_summary_op = tf.summary.merge_all()
+accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
 
-    return train_step, cross_entropy, accuracy, merged_summary_op
+merged_summary_op = tf.summary.merge_all()
 
+saver = tf.train.Saver()  # Initialize tf Saver
 
-def train(x, keep_prob, y, train_step, accuracy, saver):
-    val_step = 0
-    loaded_data = load_training_data()
-    # split into data windows:
-    data_window_list = list(moving_window(loaded_data, DATA_WINDOW_SIZE, MOVING_WINDOW_SHIFT))
-    shape = np.asarray(data_window_list).shape
-    print("dataWindowList.shape (windows, window length, columns)", shape)
-    x_list = []
-    y_list = []
-    for data_window in data_window_list:
-        data_window_array = np.asarray(data_window)
-        # TODO: Replace 2 & other constants with NUMBER_DATA_CHANNELS as needed
-        count_match = np.count_nonzero(data_window_array[:, 2] == data_window_array[0, 2])
-        # print("count_match: ", count_match)
-        if count_match == shape[1]:
-            x_window = data_window_array[:, 0:2:1]
-            # TODO: NEED TO CHANGE PREPROCESSING TO BUTTERWORTH FILTER.
-            # USE SAME FILTER AS IN ANDROID (C++ filt params),
-            # Will need to pass through that filter in Android before feeding to model.
-            mm_scale = preprocessing.MinMaxScaler().fit(x_window)
-            x_window = mm_scale.transform(x_window)
-            x_list.append(x_window)
-            y_list.append(data_window_array[0, 2])
+# Load Data:
+x_data, y_data = load_data(TRAINING_FOLDER_PATH)
+x_val_data, y_val_data = load_data(TEST_FOLDER_PATH)
+# Split training set:
+x_train, x_test, y_train, y_test = train_test_split(x_data, y_data, train_size=0.75, random_state=1)
 
-    init_op = tf.global_variables_initializer()
+# TRAIN ROUTINE #
+init_op = tf.global_variables_initializer()
+config = tf.ConfigProto()
+config.gpu_options.allow_growth = True
 
-    # get unique class values and convert to dummy values
-    # convert lists to arrays; convert to 32-bit floating point
-    y_array = np.asarray(pd.get_dummies(y_list).values).astype(np.float32)
-    x_array = np.asarray(x_list).astype(np.float32)
+val_step = 0
+with tf.Session(config=config) as sess:
+    sess.run(init_op)
+    # save model as pbtxt:
+    tf.train.write_graph(sess.graph_def, EXPORT_DIRECTORY, MODEL_NAME + '.pbtxt', True)
 
-    x_train, x_test, y_train, y_test = train_test_split(x_array, y_array, train_size=0.9, random_state=1)
+    for i in range(NUMBER_STEPS):
+        offset = (i * TRAIN_BATCH_SIZE) % (x_train.shape[0] - TRAIN_BATCH_SIZE)
+        batch_x_train = x_train[offset:(offset + TRAIN_BATCH_SIZE)]
+        batch_y_train = y_train[offset:(offset + TRAIN_BATCH_SIZE)]
+        if i % 10 == 0:
+            train_accuracy = accuracy.eval(feed_dict={x: batch_x_train, y: batch_y_train, keep_prob: 1.0})
+            print("step %d, training accuracy %g" % (i, train_accuracy))
 
-    with tf.Session() as sess:
-        sess.run(init_op)
-        # save model as pbtxt:
-        tf.train.write_graph(sess.graph_def, EXPORT_DIRECTORY, MODEL_NAME + '.pbtxt', True)
+        if i % 20 == 0:
+            # Calculate batch loss and accuracy
+            offset = (val_step * TEST_BATCH_SIZE) % (x_test.shape[0] - TEST_BATCH_SIZE)
+            batch_x_val = x_test[offset:(offset + TEST_BATCH_SIZE), :, :]
+            batch_y_val = y_test[offset:(offset + TEST_BATCH_SIZE), :]
+            val_accuracy = accuracy.eval(feed_dict={x: batch_x_val, y: batch_y_val, keep_prob: 1.0})
+            print("Validation step %d, validation accuracy %g" % (val_step, val_accuracy))
+            val_step += 1
 
-        for i in range(NUMBER_STEPS):
-            offset = (i * TRAIN_BATCH_SIZE) % (x_train.shape[0] - TRAIN_BATCH_SIZE)
-            batch_x_train = x_train[offset:(offset + TRAIN_BATCH_SIZE)]
-            shape_original = batch_x_train.shape
-            # print("shape_original", shape_original)
-            batch_x_train = np.reshape(batch_x_train,
-                                       (shape_original[0], shape_original[1]*shape_original[2], -1)).squeeze()
-            # print("shape_new", batch_x_train.shape)
-            batch_y_train = y_train[offset:(offset + TRAIN_BATCH_SIZE)]
-            if i % 10 == 0:
-                # train_accuracy = accuracy.eval(feed_dict=
-                #                                {x: batch_x_train, y: batch_y_train, keep_prob: 1.0})  # ORIGINAL
-                train_accuracy = accuracy.eval(feed_dict={x: batch_x_train, y: batch_y_train, keep_prob: 1.0})
-                print("step %d, training accuracy %g" % (i, train_accuracy))
+        train_step.run(feed_dict={x: batch_x_train, y: batch_y_train, keep_prob: 0.25})
 
-            if i % 20 == 0:
-                # Calculate batch loss and accuracy
-                offset = (val_step * VAL_BATCH_SIZE) % (x_test.shape[0] - VAL_BATCH_SIZE)
-                batch_x_val = x_test[offset:(offset + VAL_BATCH_SIZE), :, :]
-                shape_original = batch_x_val.shape
-                batch_x_val = np.reshape(batch_x_val,
-                                         (shape_original[0], shape_original[1] * shape_original[2], -1)).squeeze()
-                batch_y_val = y_test[offset:(offset + VAL_BATCH_SIZE), :]
-                val_accuracy = accuracy.eval(feed_dict={x: batch_x_val, y: batch_y_val, keep_prob: 1.0})
-                print("Validation step %d, validation accuracy %g" % (val_step, val_accuracy))
-                val_step += 1
+    # Run test data (entire set) to see accuracy.
+    test_accuracy = sess.run(accuracy, feed_dict={x: x_test, y: y_test, keep_prob: 1.0})  # original
+    print("\n Testing Accuracy:", test_accuracy, "\n\n")
+    # Holdout Validation Accuracy:
+    print("Holdout Validation:", sess.run(accuracy, feed_dict={x: x_val_data, y: y_val_data, keep_prob: 1.0}))
 
-            train_step.run(feed_dict={x: batch_x_train, y: batch_y_train, keep_prob: 0.15})
-        shape_original = x_test.shape
-        x_test = np.reshape(x_test, (shape_original[0], shape_original[1] * shape_original[2], -1)).squeeze()
-        test_accuracy = sess.run(accuracy, feed_dict={x: x_test, y: y_test, keep_prob: 1.0})
-        print("\n Testing Accuracy:", test_accuracy, "\n\n")
+    # Comment to space things out:
+    # Experimental Stuff:
+    x_0 = np.zeros((1, DATA_WINDOW_SIZE, NUMBER_DATA_CHANNELS), dtype=np.float32)
+    print("Model Dimensions: ")
+    print("h_conv1: ", sess.run(h_conv1, feed_dict={x: x_0, keep_prob: 1.0}).shape)
+    print("h_conv2: ", sess.run(h_conv2, feed_dict={x: x_0, keep_prob: 1.0}).shape)
+    print("FC1: ", sess.run(h_fc1, feed_dict={x: x_0, keep_prob: 1.0}).shape)
+    print("FC2: ", sess.run(h_fc2, feed_dict={x: x_0, keep_prob: 1.0}).shape)
+    print("y_conv: ", sess.run(y_conv, feed_dict={x: x_0, keep_prob: 1.0}).shape)
+    # print("outputs: ", sess.run(outputs, feed_dict={x: x_0, keep_prob: 1.0}))
+    # Get one sample and see what it outputs (Activations?) ?
+    for i in range(x_val_data.shape[0]):
+        x_0 = np.reshape(x_val_data[i, :, :], [1, DATA_WINDOW_SIZE, NUMBER_DATA_CHANNELS])
+        print("outputs #: ", str(i), sess.run(outputs, feed_dict={x: x_0, keep_prob: 1.0}))
 
-        # save temp checkpoint
-        saver.save(sess, EXPORT_DIRECTORY + MODEL_NAME + '.ckpt')
+    # Save First Conv Hidden layer to x CSV files: shape[3] is the # of weights
+    x_0 = np.reshape(x_val_data[1, :, :], [1, DATA_WINDOW_SIZE, NUMBER_DATA_CHANNELS])
+    y_0 = np.reshape(y_val_data[1, :], [1, NUMBER_CLASSES])
 
+    h_conv1_np = sess.run(h_conv1, feed_dict={x: x_0, keep_prob: 1.0})
+    image_output_folder_name = EXPORT_DIRECTORY + DESCRIPTION_TRAINING_DATA + TIMESTAMP_START + '/' + 'h_conv1/'
+    os.makedirs(image_output_folder_name)
+    for i in range(h_conv1_np.shape[3]):
+        filename = image_output_folder_name + 'h_conv1_' + str(i) + '.csv'
+        w_reshape = np.reshape(h_conv1_np[:, :, :, i], [DATA_WINDOW_SIZE, NUMBER_DATA_CHANNELS])
+        pd.DataFrame(w_reshape).to_csv(filename, index=False, header=False)
 
-def export_model(input_node_names, output_node_name):
-    freeze_graph.freeze_graph(EXPORT_DIRECTORY + MODEL_NAME + '.pbtxt', None, False,
-                              EXPORT_DIRECTORY + MODEL_NAME + '.ckpt', output_node_name, "save/restore_all",
-                              "save/Const:0", EXPORT_DIRECTORY + '/frozen_' + MODEL_NAME + '.pb', True, "")
+    h_conv2_np = sess.run(h_conv2, feed_dict={x: x_0, keep_prob: 1.0})
+    image_output_folder_name = EXPORT_DIRECTORY + DESCRIPTION_TRAINING_DATA + TIMESTAMP_START + '/' + 'h_conv2/'
+    os.makedirs(image_output_folder_name)
+    for i in range(h_conv2_np.shape[3]):
+        filename = image_output_folder_name + 'h_conv2_' + str(i) + '.csv'
+        w_reshape = np.reshape(h_conv2_np[:, :, :, i], [DATA_WINDOW_SIZE // 2, NUMBER_DATA_CHANNELS])
+        pd.DataFrame(w_reshape).to_csv(filename, index=False, header=False)
 
-    input_graph_def = tf.GraphDef()
-    with tf.gfile.Open(EXPORT_DIRECTORY + '/frozen_' + MODEL_NAME + '.pb', "rb") as f:
-        input_graph_def.ParseFromString(f.read())
+        # p.figure(1, figsize=(20, 20))
+        # p.title("W_conv1")
+        # p.imshow(w_reshape, interpolation="nearest", cmap="gray")
 
-    output_graph_def = optimize_for_inference_lib.optimize_for_inference(
-        input_graph_def, input_node_names, [output_node_name], tf.float32.as_datatype_enum)
-
-    with tf.gfile.FastGFile(EXPORT_DIRECTORY + '/opt_' + MODEL_NAME + '.pb', "wb") as f:
-        f.write(output_graph_def.SerializeToString())
-
-    print("Graph Saved - Output Directories: ")
-    print("1 - Standard Frozen Model:", EXPORT_DIRECTORY + '/frozen_' + MODEL_NAME + '.pb')
-    print("2 - Android Optimized Model:", EXPORT_DIRECTORY + '/opt_' + MODEL_NAME + '.pb')
-
-
-def main():
-    output_folder_name = 'exports'
-    if not path.exists(output_folder_name):
-        os.mkdir(output_folder_name)
-
-    input_node_name = 'input'
-    keep_prob_node_name = 'keep_prob'
-    output_node_name = 'output'
-
-    x, keep_prob, y_ = model_input(input_node_name, keep_prob_node_name)
-
-    train_step, loss, accuracy, merged_summary_op = build_model(x, keep_prob, y_, output_node_name)
-
-    saver = tf.train.Saver()
-
-    train(x, keep_prob, y_, train_step, accuracy, saver)
-
-    user_input = input('Export Current Model?')
-
-    if user_input == "1" or user_input.lower() == "y":
-        export_model([input_node_name, keep_prob_node_name], output_node_name)
-
-    print("Terminating...")
-
-
-if __name__ == '__main__':
-    main()
+user_input = input('Export Current Model?')
+if user_input == "1" or user_input.lower() == "y":
+    saver.save(sess, EXPORT_DIRECTORY + MODEL_NAME + '.ckpt')
+    export_model([input_node_name, keep_prob_node_name], output_node_name)
