@@ -12,6 +12,7 @@ import numpy as np
 import os as os
 import glob
 import math
+import time, datetime
 
 from sklearn import preprocessing
 from sklearn.model_selection import train_test_split
@@ -19,6 +20,7 @@ from tensorflow.python.tools import freeze_graph
 from tensorflow.python.tools import optimize_for_inference_lib
 
 # CONSTANTS:
+TIMESTAMP_START = datetime.datetime.fromtimestamp(time.time()).strftime('%Y%m%d_%H.%M.%S')
 VERSION_NUMBER = 'v0.0.5'
 TRAINING_FOLDER_PATH = r'_data/S1copy/a'
 TEST_FOLDER_PATH = r'_data/S1copy/b'
@@ -180,10 +182,10 @@ def build_model(x, keep_prob, y, output_node_name):
 
     merged_summary_op = tf.summary.merge_all()
 
-    return train_step, cross_entropy, accuracy, merged_summary_op, W_fc2
+    return train_step, cross_entropy, accuracy, merged_summary_op
 
 
-def train(x, keep_prob, y, train_step, accuracy, saver, view_shape):
+def train(x, keep_prob, y, train_step, accuracy, saver):
     val_step = 0
     x_data, y_data = load_data(TRAINING_FOLDER_PATH)
 
@@ -225,13 +227,10 @@ def train(x, keep_prob, y, train_step, accuracy, saver, view_shape):
         # Holdout Validation Accuracy:
         print("Holdout Validation:", sess.run(accuracy, feed_dict={x: x_val_data, y: y_val_data, keep_prob: 1.0}))
         # save temp checkpoint
-        p.figure(1, figsize=(20, 20))
-        # n_columns = 5
-        # n_rows = 32
-        p.title("W_conv1")
-        # w_reshape = tf.reshape(view_shape, [5, 32])
-        w_reshape = sess.run(view_shape)
-        p.imshow(w_reshape, interpolation="nearest", cmap="gray")
+        # p.figure(1, figsize=(20, 20))
+        # p.title("W_conv1")
+        # w_reshape = sess.run(view_shape)
+        # p.imshow(w_reshape, interpolation="nearest", cmap="gray")
         saver.save(sess, EXPORT_DIRECTORY + MODEL_NAME + '.ckpt')
 
 
@@ -263,11 +262,11 @@ def main():
 
     x, keep_prob, y_ = model_input(input_node_name, keep_prob_node_name)
 
-    train_step, loss, accuracy, merged_summary_op, view_shape = build_model(x, keep_prob, y_, output_node_name)
+    train_step, loss, accuracy, merged_summary_op = build_model(x, keep_prob, y_, output_node_name)
 
     saver = tf.train.Saver()
 
-    train(x, keep_prob, y_, train_step, accuracy, saver, view_shape=view_shape)
+    train(x, keep_prob, y_, train_step, accuracy, saver)
 
     user_input = input('Export Current Model?')
 
