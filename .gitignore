@@ -14,3 +14,4 @@ model_exports/
 DATA/output_csv/.idea/
 Tensorflow/ignore/
 Tensorflow/MNIST_data/
+DATA/output_csv/

@@ -27,19 +27,19 @@ VERSION_NUMBER = 'v0.1.1'
 # TRAINING_FOLDER_PATH = r'_data/S1copy/ah'
 # TEST_FOLDER_PATH = r'_data/S1copy/bh'
 DESCRIPTION_TRAINING_DATA = '_allset_'
-TRAINING_FOLDER_PATH = r'_data/RobertH/filtered_5class_train'
-TEST_FOLDER_PATH = r'_data/RobertH/filtered_5class_test'
+TRAINING_FOLDER_PATH = r'_data/RobertH/filtered_2class_15s'
+TEST_FOLDER_PATH = r'_data/RobertH/filtered_2class_10s'
 EXPORT_DIRECTORY = 'model_exports/' + VERSION_NUMBER + '/'
 MODEL_NAME = 'ssvep_net_8ch'
 KEY_DATA_DICTIONARY = 'relevant_data'
 NUMBER_STEPS = 5000
-TRAIN_BATCH_SIZE = 64
+TRAIN_BATCH_SIZE = 48
 TEST_BATCH_SIZE = 32
-DATA_WINDOW_SIZE = 512
+DATA_WINDOW_SIZE = 256
 MOVING_WINDOW_SHIFT = 32
 NUMBER_DATA_CHANNELS = 8  # 2
 LEARNING_RATE = 1e-5  # 'Step size' on n-D optimization plane
-NUMBER_CLASSES = 5  # TODO: DON"T FORGET THIS!
+NUMBER_CLASSES = 2  # TODO: DON"T FORGET THIS!
 
 
 # FOR MODEL DESIGN
@@ -47,18 +47,23 @@ STRIDE_CONV2D = [1, 1, 1, 1]
 MAX_POOL_KSIZE = [1, 2, 1, 1]
 MAX_POOL_STRIDE = [1, 2, 1, 1]
 
-BIAS_VAR_CL1 = 32
+BIAS_VAR_CL1 = 128
 BIAS_VAR_CL2 = 64
+
+DIVIDER = 4
 
 WEIGHT_VAR_CL1 = [NUMBER_CLASSES, NUMBER_DATA_CHANNELS, 1, BIAS_VAR_CL1]  # [5, NUMBER_DATA_CHANNELS, 1, 32]
 WEIGHT_VAR_CL2 = [NUMBER_CLASSES, NUMBER_DATA_CHANNELS, BIAS_VAR_CL1, BIAS_VAR_CL2]  # [5, NUMBER_DATA_CHANNELS, 32, 64]
 
-WEIGHT_VAR_FC1 = [(DATA_WINDOW_SIZE // 4) * NUMBER_DATA_CHANNELS * BIAS_VAR_CL2, BIAS_VAR_CL1 ** 2]
-MAX_POOL_FLAT_SHAPE_FC1 = [-1, NUMBER_DATA_CHANNELS * (DATA_WINDOW_SIZE // 4) * BIAS_VAR_CL2]
+WEIGHT_VAR_FC1 = [(DATA_WINDOW_SIZE // DIVIDER) * NUMBER_DATA_CHANNELS * BIAS_VAR_CL2, BIAS_VAR_CL1 ** 2]
+MAX_POOL_FLAT_SHAPE_FC1 = [-1, NUMBER_DATA_CHANNELS * (DATA_WINDOW_SIZE // DIVIDER) * BIAS_VAR_CL2]
+
 BIAS_VAR_FC1 = [(BIAS_VAR_CL1 ** 2)]
 BIAS_VAR_FC2 = [(BIAS_VAR_CL1 ** 2) * 2]
+
 WEIGHT_VAR_FC2 = [*BIAS_VAR_FC1, *BIAS_VAR_FC2]
 WEIGHT_VAR_FC_OUTPUT = [*BIAS_VAR_FC2, NUMBER_CLASSES]
+
 BIAS_VAR_FC_OUTPUT = [NUMBER_CLASSES]
 
 # Start Script Here:
@@ -181,12 +186,13 @@ b_conv2 = bias_variable([BIAS_VAR_CL2])
 h_conv2 = tf.nn.relu(conv2d(h_pool1, W_conv2) + b_conv2)
 h_pool2 = max_pool_2x2(h_conv2)
 
+# the input should be shaped/flattened
+h_pool2_flat = tf.reshape(h_pool2, MAX_POOL_FLAT_SHAPE_FC1)
+
 # fully connected layer1,the shape of the patch should be defined
 W_fc1 = weight_variable(WEIGHT_VAR_FC1)
 b_fc1 = bias_variable(BIAS_VAR_FC1)
 
-# the input should be shaped/flattened
-h_pool2_flat = tf.reshape(h_pool2, MAX_POOL_FLAT_SHAPE_FC1)
 h_fc1 = tf.nn.relu(tf.matmul(h_pool2_flat, W_fc1) + b_fc1)
 
 # fully connected layer2
@@ -261,15 +267,19 @@ with tf.Session(config=config) as sess:
     x_0 = np.zeros((1, DATA_WINDOW_SIZE, NUMBER_DATA_CHANNELS), dtype=np.float32)
     print("Model Dimensions: ")
     print("h_conv1: ", sess.run(h_conv1, feed_dict={x: x_0, keep_prob: 1.0}).shape)
+    print("h_pool1: ", sess.run(h_pool1, feed_dict={x: x_0, keep_prob: 1.0}).shape)
     print("h_conv2: ", sess.run(h_conv2, feed_dict={x: x_0, keep_prob: 1.0}).shape)
-    print("FC1: ", sess.run(h_fc1, feed_dict={x: x_0, keep_prob: 1.0}).shape)
-    print("FC2: ", sess.run(h_fc2, feed_dict={x: x_0, keep_prob: 1.0}).shape)
+    print("h_pool2: ", sess.run(h_pool2, feed_dict={x: x_0, keep_prob: 1.0}).shape)
+    print("h_pool2_flat: ", sess.run(h_pool2_flat, feed_dict={x: x_0, keep_prob: 1.0}).shape)
+    print("h_fc1: ", sess.run(h_fc1, feed_dict={x: x_0, keep_prob: 1.0}).shape)
+    print("h_fc2: ", sess.run(h_fc2, feed_dict={x: x_0, keep_prob: 1.0}).shape)
+    print("h_fc2_drop: ", sess.run(h_fc2_drop, feed_dict={x: x_0, keep_prob: 1.0}).shape)
     print("y_conv: ", sess.run(y_conv, feed_dict={x: x_0, keep_prob: 1.0}).shape)
     # print("outputs: ", sess.run(outputs, feed_dict={x: x_0, keep_prob: 1.0}))
     # Get one sample and see what it outputs (Activations?) ?
-    for i in range(x_val_data.shape[0]):
-        x_0 = np.reshape(x_val_data[i, :, :], [1, DATA_WINDOW_SIZE, NUMBER_DATA_CHANNELS])
-        print("outputs #: ", str(i), sess.run(outputs, feed_dict={x: x_0, keep_prob: 1.0}))
+    # for i in range(x_val_data.shape[0]):
+    #     x_0 = np.reshape(x_val_data[i, :, :], [1, DATA_WINDOW_SIZE, NUMBER_DATA_CHANNELS])
+    #     print("outputs #: ", str(i), sess.run(outputs, feed_dict={x: x_0, keep_prob: 1.0}))
 
     # Save First Conv Hidden layer to x CSV files: shape[3] is the # of weights
     x_0 = np.reshape(x_val_data[1, :, :], [1, DATA_WINDOW_SIZE, NUMBER_DATA_CHANNELS])
@@ -295,7 +305,7 @@ with tf.Session(config=config) as sess:
         # p.title("W_conv1")
         # p.imshow(w_reshape, interpolation="nearest", cmap="gray")
 
-user_input = input('Export Current Model?')
-if user_input == "1" or user_input.lower() == "y":
-    saver.save(sess, EXPORT_DIRECTORY + MODEL_NAME + '.ckpt')
-    export_model([input_node_name, keep_prob_node_name], output_node_name)
+# user_input = input('Export Current Model?')
+# if user_input == "1" or user_input.lower() == "y":
+#     saver.save(sess, EXPORT_DIRECTORY + MODEL_NAME + '.ckpt')
+#     export_model([input_node_name, keep_prob_node_name], output_node_name)
