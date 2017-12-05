@@ -47,8 +47,8 @@ STRIDE_CONV2D = [1, 1, 1, 1]
 MAX_POOL_KSIZE = [1, 2, 1, 1]
 MAX_POOL_STRIDE = [1, 2, 1, 1]
 
-BIAS_VAR_CL1 = 128
-BIAS_VAR_CL2 = 64
+BIAS_VAR_CL1 = 64
+BIAS_VAR_CL2 = 72
 
 DIVIDER = 4
 
@@ -59,10 +59,7 @@ WEIGHT_VAR_FC1 = [(DATA_WINDOW_SIZE // DIVIDER) * NUMBER_DATA_CHANNELS * BIAS_VA
 MAX_POOL_FLAT_SHAPE_FC1 = [-1, NUMBER_DATA_CHANNELS * (DATA_WINDOW_SIZE // DIVIDER) * BIAS_VAR_CL2]
 
 BIAS_VAR_FC1 = [(BIAS_VAR_CL1 ** 2)]
-BIAS_VAR_FC2 = [(BIAS_VAR_CL1 ** 2) * 2]
-
-WEIGHT_VAR_FC2 = [*BIAS_VAR_FC1, *BIAS_VAR_FC2]
-WEIGHT_VAR_FC_OUTPUT = [*BIAS_VAR_FC2, NUMBER_CLASSES]
+WEIGHT_VAR_FC_OUTPUT = [*BIAS_VAR_FC1, NUMBER_CLASSES]
 
 BIAS_VAR_FC_OUTPUT = [NUMBER_CLASSES]
 
@@ -196,11 +193,11 @@ b_fc1 = bias_variable(BIAS_VAR_FC1)
 h_fc1 = tf.nn.relu(tf.matmul(h_pool2_flat, W_fc1) + b_fc1)
 
 # fully connected layer2
-W_fc2 = weight_variable(WEIGHT_VAR_FC2)
-b_fc2 = bias_variable(BIAS_VAR_FC2)
-h_fc2 = tf.nn.relu(tf.matmul(h_fc1, W_fc2) + b_fc2)
+# W_fc2 = weight_variable(WEIGHT_VAR_FC2)
+# b_fc2 = bias_variable(BIAS_VAR_FC2)
+# h_fc2 = tf.nn.relu(tf.matmul(h_fc1, W_fc2) + b_fc2)
 
-h_fc2_drop = tf.nn.dropout(h_fc2, keep_prob)
+h_fc2_drop = tf.nn.dropout(h_fc1, keep_prob)
 
 # weight and bias of the output layer
 W_fco = weight_variable(WEIGHT_VAR_FC_OUTPUT)
@@ -272,7 +269,6 @@ with tf.Session(config=config) as sess:
     print("h_pool2: ", sess.run(h_pool2, feed_dict={x: x_0, keep_prob: 1.0}).shape)
     print("h_pool2_flat: ", sess.run(h_pool2_flat, feed_dict={x: x_0, keep_prob: 1.0}).shape)
     print("h_fc1: ", sess.run(h_fc1, feed_dict={x: x_0, keep_prob: 1.0}).shape)
-    print("h_fc2: ", sess.run(h_fc2, feed_dict={x: x_0, keep_prob: 1.0}).shape)
     print("h_fc2_drop: ", sess.run(h_fc2_drop, feed_dict={x: x_0, keep_prob: 1.0}).shape)
     print("y_conv: ", sess.run(y_conv, feed_dict={x: x_0, keep_prob: 1.0}).shape)
     # print("outputs: ", sess.run(outputs, feed_dict={x: x_0, keep_prob: 1.0}))
