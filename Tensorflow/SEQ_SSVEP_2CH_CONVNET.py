@@ -55,9 +55,9 @@ WEIGHT_VAR_CL2 = [NUMBER_CLASSES, NUMBER_DATA_CHANNELS, BIAS_VAR_CL1, BIAS_VAR_C
 WEIGHT_VAR_FC1 = [(DATA_WINDOW_SIZE // 4) * NUMBER_DATA_CHANNELS * BIAS_VAR_CL2, BIAS_VAR_CL1 ** 2]
 MAX_POOL_FLAT_SHAPE_FC1 = [-1, NUMBER_DATA_CHANNELS * (DATA_WINDOW_SIZE // 4) * BIAS_VAR_CL2]
 BIAS_VAR_FC1 = [(BIAS_VAR_CL1 ** 2)]
-BIAS_VAR_FC2 = [(BIAS_VAR_CL1 ** 2) * 2]
-WEIGHT_VAR_FC2 = [*BIAS_VAR_FC1, *BIAS_VAR_FC2]
-WEIGHT_VAR_FC_OUTPUT = [*BIAS_VAR_FC2, NUMBER_CLASSES]
+# BIAS_VAR_FC2 = [(BIAS_VAR_CL1 ** 2) * 2]
+# WEIGHT_VAR_FC2 = [*BIAS_VAR_FC1, *BIAS_VAR_FC2]
+WEIGHT_VAR_FC_OUTPUT = [*BIAS_VAR_FC1, NUMBER_CLASSES]
 BIAS_VAR_FC_OUTPUT = [NUMBER_CLASSES]
 
 # Start Script Here:
@@ -187,12 +187,12 @@ b_fc1 = bias_variable(BIAS_VAR_FC1)
 h_pool2_flat = tf.reshape(h_pool2, MAX_POOL_FLAT_SHAPE_FC1)
 h_fc1 = tf.nn.relu(tf.matmul(h_pool2_flat, W_fc1) + b_fc1)
 
-# fully connected layer2
-W_fc2 = weight_variable(WEIGHT_VAR_FC2)
-b_fc2 = bias_variable(BIAS_VAR_FC2)
-h_fc2 = tf.nn.relu(tf.matmul(h_fc1, W_fc2) + b_fc2)
+# NOTE: REMOVED fully connected layer2
+# W_fc2 = weight_variable(WEIGHT_VAR_FC2)
+# b_fc2 = bias_variable(BIAS_VAR_FC2)
+# h_fc2 = tf.nn.relu(tf.matmul(h_fc1, W_fc2) + b_fc2)
 
-h_fc2_drop = tf.nn.dropout(h_fc2, keep_prob)
+h_fc2_drop = tf.nn.dropout(h_fc1, keep_prob)
 
 # weight and bias of the output layer
 W_fco = weight_variable(WEIGHT_VAR_FC_OUTPUT)
@@ -261,13 +261,12 @@ with tf.Session(config=config) as sess:
     print("h_conv1: ", sess.run(h_conv1, feed_dict={x: x_0, keep_prob: 1.0}).shape)
     print("h_conv2: ", sess.run(h_conv2, feed_dict={x: x_0, keep_prob: 1.0}).shape)
     print("FC1: ", sess.run(h_fc1, feed_dict={x: x_0, keep_prob: 1.0}).shape)
-    print("FC2: ", sess.run(h_fc2, feed_dict={x: x_0, keep_prob: 1.0}).shape)
     print("y_conv: ", sess.run(y_conv, feed_dict={x: x_0, keep_prob: 1.0}).shape)
     # print("outputs: ", sess.run(outputs, feed_dict={x: x_0, keep_prob: 1.0}))
     # Get one sample and see what it outputs (Activations?) ?
-    for i in range(x_val_data.shape[0]):
-        x_0 = np.reshape(x_val_data[i, :, :], [1, DATA_WINDOW_SIZE, NUMBER_DATA_CHANNELS])
-        print("outputs #: ", str(i), sess.run(outputs, feed_dict={x: x_0, keep_prob: 1.0}))
+    # for i in range(x_val_data.shape[0]):
+    #     x_0 = np.reshape(x_val_data[i, :, :], [1, DATA_WINDOW_SIZE, NUMBER_DATA_CHANNELS])
+    #     print("outputs #: ", str(i), sess.run(outputs, feed_dict={x: x_0, keep_prob: 1.0}))
 
     # Save First Conv Hidden layer to x CSV files: shape[3] is the # of weights
     x_0 = np.reshape(x_val_data[1, :, :], [1, DATA_WINDOW_SIZE, NUMBER_DATA_CHANNELS])
