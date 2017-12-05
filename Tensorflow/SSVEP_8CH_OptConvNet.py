@@ -41,7 +41,6 @@ NUMBER_DATA_CHANNELS = 8  # 2
 LEARNING_RATE = 1e-5  # 'Step size' on n-D optimization plane
 NUMBER_CLASSES = 2  # TODO: DON"T FORGET THIS!
 
-
 # FOR MODEL DESIGN
 STRIDE_CONV2D = [1, 1, 1, 1]
 MAX_POOL_KSIZE = [1, 2, 1, 1]
@@ -162,6 +161,23 @@ def max_pool_2x2(x_):
                           strides=MAX_POOL_STRIDE, padding='SAME')
 
 
+def get_activations(layer, input_val, shape, directory, file_name, sum_weights):
+    os.makedirs(directory)
+    units = sess.run(layer, feed_dict={x: np.reshape(input_val, shape, order='F'), keep_prob: 1.0})
+    print("units.shape: ", units.shape)
+    # plot_nn_filter(units, directory + file_name, True)
+    new_shape = [units.shape[1], units.shape[2]]
+    new_array = np.zeros(new_shape)
+    feature_maps = units.shape[3]
+    filename_ = directory + file_name
+    for i0 in range(feature_maps):
+        if sum_weights:
+            new_array[i0, :] = [sum(x_i) for x_i in zip(*units[0, :, :, i0])]
+            pd.DataFrame(new_array).to_csv(filename_ + '.csv', index=False, header=False)
+        else:
+            pd.DataFrame(units[1, :, :, i0]).to_csv(filename_ + '_' + str(i0 + 1) + '.csv', index=False, header=False)
+
+
 # MODEL INPUT #
 x = tf.placeholder(tf.float32, shape=[None, DATA_WINDOW_SIZE, NUMBER_DATA_CHANNELS], name=input_node_name)
 keep_prob = tf.placeholder(tf.float32, name=keep_prob_node_name)
@@ -256,6 +272,7 @@ with tf.Session(config=config) as sess:
     # Run test data (entire set) to see accuracy.
     test_accuracy = sess.run(accuracy, feed_dict={x: x_test, y: y_test, keep_prob: 1.0})  # original
     print("\n Testing Accuracy:", test_accuracy, "\n\n")
+
     # Holdout Validation Accuracy:
     print("Holdout Validation:", sess.run(accuracy, feed_dict={x: x_val_data, y: y_val_data, keep_prob: 1.0}))
 
@@ -276,32 +293,37 @@ with tf.Session(config=config) as sess:
     # for i in range(x_val_data.shape[0]):
     #     x_0 = np.reshape(x_val_data[i, :, :], [1, DATA_WINDOW_SIZE, NUMBER_DATA_CHANNELS])
     #     print("outputs #: ", str(i), sess.run(outputs, feed_dict={x: x_0, keep_prob: 1.0}))
-
     # Save First Conv Hidden layer to x CSV files: shape[3] is the # of weights
-    x_0 = np.reshape(x_val_data[1, :, :], [1, DATA_WINDOW_SIZE, NUMBER_DATA_CHANNELS])
-    y_0 = np.reshape(y_val_data[1, :], [1, NUMBER_CLASSES])
-
-    h_conv1_np = sess.run(h_conv1, feed_dict={x: x_0, keep_prob: 1.0})
+    # x_0 = np.reshape(x_val_data[1, :, :], [1, DATA_WINDOW_SIZE, NUMBER_DATA_CHANNELS])
+    # y_0 = np.reshape(y_val_data[1, :], [1, NUMBER_CLASSES])
+    #
+    # h_conv1_np = sess.run(h_conv1, feed_dict={x: x_0, keep_prob: 1.0})
     image_output_folder_name = EXPORT_DIRECTORY + DESCRIPTION_TRAINING_DATA + TIMESTAMP_START + '/' + 'h_conv1/'
-    os.makedirs(image_output_folder_name)
-    for i in range(h_conv1_np.shape[3]):
-        filename = image_output_folder_name + 'h_conv1_' + str(i) + '.csv'
-        w_reshape = np.reshape(h_conv1_np[:, :, :, i], [DATA_WINDOW_SIZE, NUMBER_DATA_CHANNELS])
-        pd.DataFrame(w_reshape).to_csv(filename, index=False, header=False)
+    # os.makedirs(image_output_folder_name)
+    # for i in range(h_conv1_np.shape[3]):
+    #     filename = image_output_folder_name + 'h_conv1_' + str(i) + '.csv'
+    #     w_reshape = np.reshape(h_conv1_np[:, :, :, i], [DATA_WINDOW_SIZE, NUMBER_DATA_CHANNELS])
+    #     pd.DataFrame(w_reshape).to_csv(filename, index=False, header=False)
+    #
+    # h_conv2_np = sess.run(h_conv2, feed_dict={x: x_0, keep_prob: 1.0})
+    # image_output_folder_name = EXPORT_DIRECTORY + DESCRIPTION_TRAINING_DATA + TIMESTAMP_START + '/' + 'h_conv2/'
+    # os.makedirs(image_output_folder_name)
+    # for i in range(h_conv2_np.shape[3]):
+    #     filename = image_output_folder_name + 'h_conv2_' + str(i) + '.csv'
+    #     w_reshape = np.reshape(h_conv2_np[:, :, :, i], [DATA_WINDOW_SIZE // 2, NUMBER_DATA_CHANNELS])
+    #     pd.DataFrame(w_reshape).to_csv(filename, index=False, header=False)
 
-    h_conv2_np = sess.run(h_conv2, feed_dict={x: x_0, keep_prob: 1.0})
-    image_output_folder_name = EXPORT_DIRECTORY + DESCRIPTION_TRAINING_DATA + TIMESTAMP_START + '/' + 'h_conv2/'
-    os.makedirs(image_output_folder_name)
-    for i in range(h_conv2_np.shape[3]):
-        filename = image_output_folder_name + 'h_conv2_' + str(i) + '.csv'
-        w_reshape = np.reshape(h_conv2_np[:, :, :, i], [DATA_WINDOW_SIZE // 2, NUMBER_DATA_CHANNELS])
-        pd.DataFrame(w_reshape).to_csv(filename, index=False, header=False)
+    # p.figure(1, figsize=(20, 20))
+    # p.title("W_conv1")
+    # p.imshow(w_reshape, interpolation="nearest", cmap="gray")
+    user_input = input('Extract & Analyze Maps?')
+    filename = 'sum_h_conv1'
+    if user_input == "1" or user_input.lower() == "y":
+        x_sample0 = x_val_data[1, :, :]
+        get_activations(h_conv1, x_sample0, [1, DATA_WINDOW_SIZE, NUMBER_DATA_CHANNELS],
+                        image_output_folder_name, filename, False)
 
-        # p.figure(1, figsize=(20, 20))
-        # p.title("W_conv1")
-        # p.imshow(w_reshape, interpolation="nearest", cmap="gray")
-
-# user_input = input('Export Current Model?')
-# if user_input == "1" or user_input.lower() == "y":
-#     saver.save(sess, EXPORT_DIRECTORY + MODEL_NAME + '.ckpt')
-#     export_model([input_node_name, keep_prob_node_name], output_node_name)
+user_input = input('Export Current Model?')
+if user_input == "1" or user_input.lower() == "y":
+    saver.save(sess, EXPORT_DIRECTORY + MODEL_NAME + '.ckpt')
+    export_model([input_node_name, keep_prob_node_name], output_node_name)
