@@ -27,10 +27,12 @@ VERSION_NUMBER = 'v0.1.1'
 # TRAINING_FOLDER_PATH = r'_data/S1copy/ah'
 # TEST_FOLDER_PATH = r'_data/S1copy/bh'
 DESCRIPTION_TRAINING_DATA = '_allset_'
-TRAINING_FOLDER_PATH = r'_data/RobertH/filtered_2class_15s'
-TEST_FOLDER_PATH = r'_data/RobertH/filtered_2class_10s'
+TRAINING_FOLDER_PATH = r'_data/ch8/S001/filtered_5class_test'
+TEST_FOLDER_PATH = r'_data/ch8/S001/filtered_5class_train'
 EXPORT_DIRECTORY = 'model_exports/' + VERSION_NUMBER + '/'
 MODEL_NAME = 'ssvep_net_8ch'
+CHECKPOINT_FILE = EXPORT_DIRECTORY + MODEL_NAME + '.ckpt'
+NUMBER_CLASSES = 5
 KEY_DATA_DICTIONARY = 'relevant_data'
 NUMBER_STEPS = 5000
 TRAIN_BATCH_SIZE = 48
@@ -39,7 +41,6 @@ DATA_WINDOW_SIZE = 256
 MOVING_WINDOW_SHIFT = 32
 NUMBER_DATA_CHANNELS = 8  # 2
 LEARNING_RATE = 1e-5  # 'Step size' on n-D optimization plane
-NUMBER_CLASSES = 2  # TODO: DON'T FORGET THIS!
 
 # FOR MODEL DESIGN
 STRIDE_CONV2D = [1, 1, 1, 1]
@@ -92,8 +93,7 @@ def separate_data(input_data):
             x_window = data_window_array[:, 0:NUMBER_DATA_CHANNELS:1]  # [0:2:1]
             # TODO: USE SAME FILTER AS IN ANDROID (C++ filt params)
             # Will need to pass through that filter in Android before feeding to model.
-            # mm_scale = preprocessing.MinMaxScaler(feature_range=(-1, 1)).fit(x_window)
-            mm_scale = preprocessing.MinMaxScaler(feature_range=(0, 1)).fit(x_window)
+            mm_scale = preprocessing.MinMaxScaler(feature_range=(-1, 1)).fit(x_window)
             x_window = mm_scale.transform(x_window)
 
             x_list.append(x_window)
@@ -161,7 +161,7 @@ def max_pool_2x2(x_):
                           strides=MAX_POOL_STRIDE, padding='SAME')
 
 
-def get_activations(layer, input_val, shape, directory, file_name, sum_weights=False, sum_all=False):
+def get_activations(layer, input_val, shape, directory, file_name, sum_all=False):
     os.makedirs(directory)
     units = sess.run(layer, feed_dict={x: np.reshape(input_val, shape, order='F'), keep_prob: 1.0})
     print("units.shape: ", units.shape)
@@ -169,19 +169,18 @@ def get_activations(layer, input_val, shape, directory, file_name, sum_weights=F
     new_shape = [units.shape[1], units.shape[2]]
     feature_maps = units.shape[3]
     filename_ = directory + file_name
-    if sum_weights or sum_all:
+    if sum_all:
         new_array = np.reshape(units.sum(axis=3), new_shape)
         pd.DataFrame(new_array).to_csv(filename_ + '_weight_matrix' + '.csv', index=False, header=False)
-        if sum_all:
-            summed_array = new_array.sum(axis=0)
-            pd.DataFrame(summed_array).to_csv(filename_ + '_sum_all' + '.csv', index=False, header=False)
-            print('All Values:')
-            for i0 in range(summed_array.shape[0]):
-                print('SummedWeights Ch', str(i0 + 1), ': ', summed_array[i0])
+        summed_array = new_array.sum(axis=0)
+        pd.DataFrame(summed_array).to_csv(filename_ + '_sum_all' + '.csv', index=False, header=False)
+        print('All Values:')
+        return summed_array
     else:
         for i0 in range(feature_maps):
             pd.DataFrame(units[:, :, :, i0].reshape(new_shape)).to_csv(
                 filename_ + '_' + str(i0 + 1) + '.csv', index=False, header=False)
+        return units
 
 
 # MODEL INPUT #
@@ -275,11 +274,12 @@ with tf.Session(config=config) as sess:
     print("\n Testing Accuracy:", test_accuracy, "\n\n")
 
     # Holdout Validation Accuracy:
-    print("Holdout Validation:", sess.run(accuracy, feed_dict={x: x_val_data, y: y_val_data, keep_prob: 1.0}))
+    # print("Holdout Validation:", sess.run(accuracy, feed_dict={x: x_val_data, y: y_val_data, keep_prob: 1.0}))
 
     # Comment to space things out:
     # Experimental Stuff:
-    x_0 = np.zeros((1, DATA_WINDOW_SIZE, NUMBER_DATA_CHANNELS), dtype=np.float32)
+    input_shape = [1, DATA_WINDOW_SIZE, NUMBER_DATA_CHANNELS]
+    x_0 = np.zeros(input_shape, dtype=np.float32)
     print("Model Dimensions: ")
     print("h_conv1: ", sess.run(h_conv1, feed_dict={x: x_0, keep_prob: 1.0}).shape)
     print("h_pool1: ", sess.run(h_pool1, feed_dict={x: x_0, keep_prob: 1.0}).shape)
@@ -295,10 +295,17 @@ with tf.Session(config=config) as sess:
     user_input = input('Extract & Analyze Maps?')
     if user_input == "1" or user_input.lower() == "y":
         x_sample0 = x_val_data[1, :, :]
-        get_activations(h_conv1, x_sample0, [1, DATA_WINDOW_SIZE, NUMBER_DATA_CHANNELS],
-                        image_output_folder_name, filename, sum_all=True)
+        weights = get_activations(h_conv1, x_sample0, input_shape, image_output_folder_name, filename, sum_all=True)
+        print('weights', weights)
+        # TODO: Normalize weights:
+        # weights_norm = scaler.transform(weights)
+        # print('weights.normalized', weights_norm)
+        # Read from the tail of the argsort to find the n highest elements:
+        weights_sorted = np.argsort(weights)[::-1]  # [:2] select last 2
+        print('weights_sorted: ', weights_sorted)
+        # TODO: Retrain with selected weights (4, then 2):
 
 user_input = input('Export Current Model?')
 if user_input == "1" or user_input.lower() == "y":
-    saver.save(sess, EXPORT_DIRECTORY + MODEL_NAME + '.ckpt')
+    saver.save(sess, CHECKPOINT_FILE)
     export_model([input_node_name, keep_prob_node_name], output_node_name)
