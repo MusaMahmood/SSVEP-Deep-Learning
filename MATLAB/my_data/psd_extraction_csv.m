@@ -13,6 +13,7 @@ for f = 1:length(d)
     wStart = start:whop:(length(data)-wlen); wEnd = wStart + wlen - 1;
     P = zeros(length(wStart), length(select_chs), wlen/2);
     relevant_data = P;
+    Y = zeros(length(wStart), 1);
     for w = 1:length(wStart)
         selected_window = data(wStart(w):wEnd(w), :);
         if sum(selected_window(:, 3) == selected_window(1, 3)) == wlen
@@ -23,7 +24,7 @@ for f = 1:length(d)
             end
             relevant_data(w, :, :) = rescale_minmax(P(w, :, :));
             if (PLOT)
-                imagesc(select_chs, F, reshape(P(w, :, :), [size(P,2), size(P,3)])'); ylim([5 40])
+                imagesc(select_chs, F, reshape(relevant_data(w, :, :), [size(P,2), size(P,3)])'); ylim([5 40])
                 set(gca,'YDir','normal'); xlabel('Ch, #');ylabel('Frequency, Hz'); colormap(jet); cb = colorbar; ylabel(cb, 'Power (db)')
             end
         end
