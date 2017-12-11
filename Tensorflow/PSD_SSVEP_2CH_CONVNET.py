@@ -139,7 +139,8 @@ def get_activations(layer, input_val, shape, directory, file_name, sum_all=False
     if sum_all:
         new_array = np.reshape(units.sum(axis=3), new_shape)
         pd.DataFrame(new_array).to_csv(filename_ + '_weight_matrix' + '.csv', index=False, header=False)
-        summed_array = new_array.sum(axis=0)
+        major_axis = np.argmax(new_array.shape)
+        summed_array = new_array.sum(axis=major_axis)
         pd.DataFrame(summed_array).to_csv(filename_ + '_sum_all' + '.csv', index=False, header=False)
         print('All Values:')
         return summed_array
@@ -261,13 +262,12 @@ with tf.Session(config=config) as sess:
     user_input = input('Extract & Analyze Maps?')
     if user_input == "1" or user_input.lower() == "y":
         x_sample0 = x_val_data[1, :, :]
-        # TODO: FIX THIS:
-        # weights = get_activations(h_conv1, x_sample0, DEFAULT_IMAGE_SHAPE, image_output_folder_name,
-        #                           filename, sum_all=True)
-        # print('weights', weights)
+        weights = get_activations(h_conv1, x_sample0, INPUT_IMAGE_SHAPE, image_output_folder_name,
+                                  filename, sum_all=True)
+        print('weights', weights)
         # Read from the tail of the arg-sort to find the n highest elements:
-        # weights_sorted = np.argsort(weights)[::-1]  # [:2] select last 2
-        # print('weights_sorted: ', weights_sorted)
+        weights_sorted = np.argsort(weights)[::-1]  # [:2] select last 2
+        print('weights_sorted: ', weights_sorted)
         # TODO: Retrain with selected weights (4, then 2):
 
 user_input = input('Export Current Model?')

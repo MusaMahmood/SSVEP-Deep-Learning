@@ -29,10 +29,6 @@ MODEL_NAME = 'ssvep_net_8ch'
 CHECKPOINT_FILE = EXPORT_DIRECTORY + MODEL_NAME + '.ckpt'
 KEY_X_DATA_DICTIONARY = 'relevant_data'
 KEY_Y_DATA_DICTIONARY = 'Y'
-NUMBER_STEPS = 5000
-TRAIN_BATCH_SIZE = 128
-TEST_BATCH_SIZE = 64
-LEARNING_RATE = 1e-5  # 'Step size' on n-D optimization plane
 
 # IMAGE SHAPE/CHARACTERISTICS
 NUMBER_CLASSES = 4
@@ -44,8 +40,11 @@ NUMBER_DATA_CHANNELS = SELECT_DATA_CHANNELS.shape[0]  # Selects first int in sha
 DEFAULT_IMAGE_SHAPE = [NUMBER_DATA_CHANNELS, DATA_WINDOW_SIZE]
 INPUT_IMAGE_SHAPE = [1, NUMBER_DATA_CHANNELS, DATA_WINDOW_SIZE]
 
-
 # FOR MODEL DESIGN
+NUMBER_STEPS = 1000
+TRAIN_BATCH_SIZE = 128
+TEST_BATCH_SIZE = 64
+LEARNING_RATE = 1e-5  # 'Step size' on n-D optimization plane
 STRIDE_CONV2D = [1, 1, 1, 1]
 MAX_POOL_K_SIZE = [1, 2, 1, 1]
 MAX_POOL_STRIDE = [1, 2, 1, 1]
@@ -135,14 +134,14 @@ def get_activations(layer, input_val, shape, directory, file_name, sum_all=False
     os.makedirs(directory)
     units = sess.run(layer, feed_dict={x: np.reshape(input_val, shape, order='F'), keep_prob: 1.0})
     print("units.shape: ", units.shape)
-    # plot_nn_filter(units, directory + file_name, True)
     new_shape = [units.shape[1], units.shape[2]]
     feature_maps = units.shape[3]
     filename_ = directory + file_name
     if sum_all:
         new_array = np.reshape(units.sum(axis=3), new_shape)
         pd.DataFrame(new_array).to_csv(filename_ + '_weight_matrix' + '.csv', index=False, header=False)
-        summed_array = new_array.sum(axis=0)
+        major_axis = np.argmax(new_array.shape)
+        summed_array = new_array.sum(axis=major_axis)
         pd.DataFrame(summed_array).to_csv(filename_ + '_sum_all' + '.csv', index=False, header=False)
         print('All Values:')
         return summed_array
@@ -264,7 +263,7 @@ with tf.Session(config=config) as sess:
     user_input = input('Extract & Analyze Maps?')
     if user_input == "1" or user_input.lower() == "y":
         x_sample0 = x_val_data[1, :, :]
-        weights = get_activations(h_conv1, x_sample0, DEFAULT_IMAGE_SHAPE, image_output_folder_name,
+        weights = get_activations(h_conv1, x_sample0, INPUT_IMAGE_SHAPE, image_output_folder_name,
                                   filename, sum_all=True)
         print('weights', weights)
         # Read from the tail of the arg-sort to find the n highest elements:
