@@ -261,11 +261,13 @@ with tf.Session(config=config) as sess:
     user_input = input('Extract & Analyze Maps?')
     if user_input == "1" or user_input.lower() == "y":
         x_sample0 = x_val_data[1, :, :]
-        weights = get_activations(h_conv1, x_sample0, DEFAULT_IMAGE_SHAPE, image_output_folder_name, filename, sum_all=True)
-        print('weights', weights)
-        # Read from the tail of the argsort to find the n highest elements:
-        weights_sorted = np.argsort(weights)[::-1]  # [:2] select last 2
-        print('weights_sorted: ', weights_sorted)
+        # TODO: FIX THIS:
+        # weights = get_activations(h_conv1, x_sample0, DEFAULT_IMAGE_SHAPE, image_output_folder_name,
+        #                           filename, sum_all=True)
+        # print('weights', weights)
+        # Read from the tail of the arg-sort to find the n highest elements:
+        # weights_sorted = np.argsort(weights)[::-1]  # [:2] select last 2
+        # print('weights_sorted: ', weights_sorted)
         # TODO: Retrain with selected weights (4, then 2):
 
 user_input = input('Export Current Model?')

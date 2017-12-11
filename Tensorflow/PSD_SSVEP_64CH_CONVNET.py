@@ -6,7 +6,6 @@
 # import matplotlib.pyplot as p
 import tensorflow as tf
 import os.path as path
-import itertools as it
 import pandas as pd
 import numpy as np
 import os as os
@@ -15,7 +14,6 @@ import glob
 import time
 
 from scipy.io import loadmat
-from sklearn import preprocessing
 from sklearn.model_selection import train_test_split
 from tensorflow.python.tools import freeze_graph
 from tensorflow.python.tools import optimize_for_inference_lib
@@ -29,35 +27,40 @@ TEST_FOLDER_PATH = r'_data/ssvep_benchmark/PSD/S1_val'
 EXPORT_DIRECTORY = 'model_exports/' + VERSION_NUMBER + '/'
 MODEL_NAME = 'ssvep_net_8ch'
 CHECKPOINT_FILE = EXPORT_DIRECTORY + MODEL_NAME + '.ckpt'
-NUMBER_CLASSES = 4
 KEY_X_DATA_DICTIONARY = 'relevant_data'
 KEY_Y_DATA_DICTIONARY = 'Y'
 NUMBER_STEPS = 5000
 TRAIN_BATCH_SIZE = 128
 TEST_BATCH_SIZE = 64
-DEFAULT_IMAGE_SHAPE = [64, 128]
-DATA_WINDOW_SIZE = 256
-MOVING_WINDOW_SHIFT = 16
-TOTAL_DATA_CHANNELS = 64
-SELECT_DATA_CHANNELS = np.asarray(range(1, 64))
-NUMBER_DATA_CHANNELS = SELECT_DATA_CHANNELS.shape[0]  # Selects first int in shape
 LEARNING_RATE = 1e-5  # 'Step size' on n-D optimization plane
+
+# IMAGE SHAPE/CHARACTERISTICS
+NUMBER_CLASSES = 4
+TOTAL_DATA_CHANNELS = 64
+DATA_WINDOW_SIZE = 128
+MOVING_WINDOW_SHIFT = 16
+SELECT_DATA_CHANNELS = np.asarray(range(0, 64))
+NUMBER_DATA_CHANNELS = SELECT_DATA_CHANNELS.shape[0]  # Selects first int in shape
+DEFAULT_IMAGE_SHAPE = [NUMBER_DATA_CHANNELS, DATA_WINDOW_SIZE]
+INPUT_IMAGE_SHAPE = [1, NUMBER_DATA_CHANNELS, DATA_WINDOW_SIZE]
+
 
 # FOR MODEL DESIGN
 STRIDE_CONV2D = [1, 1, 1, 1]
 MAX_POOL_K_SIZE = [1, 2, 1, 1]
 MAX_POOL_STRIDE = [1, 2, 1, 1]
 
-BIAS_VAR_CL1 = 64
-BIAS_VAR_CL2 = 72
+BIAS_VAR_CL1 = 32
+BIAS_VAR_CL2 = 64
 
-DIVIDER = 4
+DIVIDER = 2
 
 WEIGHT_VAR_CL1 = [NUMBER_CLASSES, NUMBER_DATA_CHANNELS, 1, BIAS_VAR_CL1]  # [5, NUMBER_DATA_CHANNELS, 1, 32]
 WEIGHT_VAR_CL2 = [NUMBER_CLASSES, NUMBER_DATA_CHANNELS, BIAS_VAR_CL1, BIAS_VAR_CL2]  # [5, NUMBER_DATA_CHANNELS, 32, 64]
 
-WEIGHT_VAR_FC1 = [(DATA_WINDOW_SIZE // DIVIDER) * NUMBER_DATA_CHANNELS * BIAS_VAR_CL2, BIAS_VAR_CL1 ** 2]
-MAX_POOL_FLAT_SHAPE_FC1 = [-1, NUMBER_DATA_CHANNELS * (DATA_WINDOW_SIZE // DIVIDER) * BIAS_VAR_CL2]
+MAX_POOL_FLAT_SHAPE_FC1 = [-1, BIAS_VAR_CL1 * NUMBER_DATA_CHANNELS * (DATA_WINDOW_SIZE // DIVIDER)]
+
+WEIGHT_VAR_FC1 = [(DATA_WINDOW_SIZE // DIVIDER) * NUMBER_DATA_CHANNELS * BIAS_VAR_CL1, BIAS_VAR_CL1 ** 2]
 
 BIAS_VAR_FC1 = [(BIAS_VAR_CL1 ** 2)]
 WEIGHT_VAR_FC_OUTPUT = [*BIAS_VAR_FC1, NUMBER_CLASSES]
@@ -73,50 +76,15 @@ keep_prob_node_name = 'keep_prob'
 output_node_name = 'output'
 
 
-# Data Loading/Saving Methods:
-def moving_window(data, length, step):
-    # Prepare windows of 'length'
-    streams = it.tee(data, length)
-    # Use step of step, but don't skip any (overlap)
-    return zip(*[it.islice(stream, i_, None, step) for stream, i_ in zip(streams, it.count(step=1))])
-
-
-def separate_data(input_data):
-    data_window_list = list(moving_window(input_data, DATA_WINDOW_SIZE, MOVING_WINDOW_SHIFT))
-    shape = np.asarray(data_window_list).shape
-    x_list = []
-    y_list = []
-    for data_window in data_window_list:
-        data_window_array = np.asarray(data_window)
-        count_match = np.count_nonzero(data_window_array[:, TOTAL_DATA_CHANNELS] ==
-                                       data_window_array[0, TOTAL_DATA_CHANNELS])
-        if count_match == shape[1]:
-            x_window = data_window_array[:, SELECT_DATA_CHANNELS]
-            mm_scale = preprocessing.MinMaxScaler(feature_range=(-1, 1)).fit(x_window)
-            x_window = mm_scale.transform(x_window)
-
-            x_list.append(x_window)
-            y_list.append(data_window_array[0, TOTAL_DATA_CHANNELS])
-
-    # get unique class values and convert to dummy values
-    # convert lists to arrays; convert to 32-bit floating point
-    y_array = np.asarray(y_list)
-    x_array = np.asarray(x_list).astype(np.float32)
-    return x_array, y_array
-
-
 def load_data(data_directory):
-    x_train_data = np.empty([0, *DEFAULT_IMAGE_SHAPE], np.float32)
+    x_train_data = np.empty([0, *[NUMBER_DATA_CHANNELS, DATA_WINDOW_SIZE]], np.float32)
     y_train_data = np.empty([0], np.float32)
     training_files = glob.glob(data_directory + "/*.mat")
     for f in training_files:
-        x_array = loadmat(f).get(KEY_X_DATA_DICTIONARY)
+        x_array_original = loadmat(f).get(KEY_X_DATA_DICTIONARY)
+        x_array = x_array_original[:, SELECT_DATA_CHANNELS, :]
         y_array = loadmat(f).get(KEY_Y_DATA_DICTIONARY)
-        y_array = y_array.reshape([y_array.shape[1]])
-        # TODO: check shape and that # of samples match:
-        print('x_array.shape', x_array.shape)
-        print('y_array.shape', y_array.shape)
-        # x_array, y_array = separate_data(relevant_data)
+        y_array = y_array.reshape([np.amax(y_array.shape)])
         x_train_data = np.concatenate((x_train_data, x_array), axis=0)
         y_train_data = np.concatenate((y_train_data, y_array), axis=0)
     y_train_data = np.asarray(pd.get_dummies(y_train_data).values).astype(np.float32)
@@ -186,11 +154,11 @@ def get_activations(layer, input_val, shape, directory, file_name, sum_all=False
 
 
 # MODEL INPUT #
-x = tf.placeholder(tf.float32, shape=[None, DATA_WINDOW_SIZE, NUMBER_DATA_CHANNELS], name=input_node_name)
+x = tf.placeholder(tf.float32, shape=[None, *DEFAULT_IMAGE_SHAPE], name=input_node_name)
 keep_prob = tf.placeholder(tf.float32, name=keep_prob_node_name)
 y = tf.placeholder(tf.float32, shape=[None, NUMBER_CLASSES])
 
-x_input = tf.reshape(x, [-1, DATA_WINDOW_SIZE, NUMBER_DATA_CHANNELS, 1])
+x_input = tf.reshape(x, [-1, *DEFAULT_IMAGE_SHAPE, 1])
 
 # first convolution and pooling
 W_conv1 = weight_variable(WEIGHT_VAR_CL1)
@@ -249,6 +217,18 @@ config.gpu_options.allow_growth = True
 val_step = 0
 with tf.Session(config=config) as sess:
     sess.run(init_op)
+
+    x_0 = np.zeros(INPUT_IMAGE_SHAPE, dtype=np.float32)
+    print("Model Dimensions: ")
+    print("h_conv1: ", sess.run(h_conv1, feed_dict={x: x_0, keep_prob: 1.0}).shape)
+    print("h_pool1: ", sess.run(h_pool1, feed_dict={x: x_0, keep_prob: 1.0}).shape)
+    print("h_conv2: ", sess.run(h_conv2, feed_dict={x: x_0, keep_prob: 1.0}).shape)
+    print("h_pool2: ", sess.run(h_pool2, feed_dict={x: x_0, keep_prob: 1.0}).shape)
+    print("h_pool2_flat: ", sess.run(h_pool2_flat, feed_dict={x: x_0, keep_prob: 1.0}).shape)
+    print("h_fc1: ", sess.run(h_fc1, feed_dict={x: x_0, keep_prob: 1.0}).shape)
+    print("h_fc2_drop: ", sess.run(h_fc2_drop, feed_dict={x: x_0, keep_prob: 1.0}).shape)
+    print("y_conv: ", sess.run(y_conv, feed_dict={x: x_0, keep_prob: 1.0}).shape)
+
     # save model as pbtxt:
     tf.train.write_graph(sess.graph_def, EXPORT_DIRECTORY, MODEL_NAME + '.pbtxt', True)
 
@@ -278,29 +258,16 @@ with tf.Session(config=config) as sess:
     # Holdout Validation Accuracy:
     print("Holdout Validation:", sess.run(accuracy, feed_dict={x: x_val_data[0:128], y: y_val_data[0:128],
                                                                keep_prob: 1.0}))
-
-    # Comment to space things out:
-    # Experimental Stuff:
-    input_shape = [1, DATA_WINDOW_SIZE, NUMBER_DATA_CHANNELS]
-    x_0 = np.zeros(input_shape, dtype=np.float32)
-    print("Model Dimensions: ")
-    print("h_conv1: ", sess.run(h_conv1, feed_dict={x: x_0, keep_prob: 1.0}).shape)
-    print("h_pool1: ", sess.run(h_pool1, feed_dict={x: x_0, keep_prob: 1.0}).shape)
-    print("h_conv2: ", sess.run(h_conv2, feed_dict={x: x_0, keep_prob: 1.0}).shape)
-    print("h_pool2: ", sess.run(h_pool2, feed_dict={x: x_0, keep_prob: 1.0}).shape)
-    print("h_pool2_flat: ", sess.run(h_pool2_flat, feed_dict={x: x_0, keep_prob: 1.0}).shape)
-    print("h_fc1: ", sess.run(h_fc1, feed_dict={x: x_0, keep_prob: 1.0}).shape)
-    print("h_fc2_drop: ", sess.run(h_fc2_drop, feed_dict={x: x_0, keep_prob: 1.0}).shape)
-    print("y_conv: ", sess.run(y_conv, feed_dict={x: x_0, keep_prob: 1.0}).shape)
     # Get one sample and see what it outputs (Activations?) ?
     image_output_folder_name = EXPORT_DIRECTORY + DESCRIPTION_TRAINING_DATA + TIMESTAMP_START + '/' + 'h_conv1/'
     filename = 'sum_h_conv1'
     user_input = input('Extract & Analyze Maps?')
     if user_input == "1" or user_input.lower() == "y":
         x_sample0 = x_val_data[1, :, :]
-        weights = get_activations(h_conv1, x_sample0, input_shape, image_output_folder_name, filename, sum_all=True)
+        weights = get_activations(h_conv1, x_sample0, DEFAULT_IMAGE_SHAPE, image_output_folder_name,
+                                  filename, sum_all=True)
         print('weights', weights)
-        # Read from the tail of the argsort to find the n highest elements:
+        # Read from the tail of the arg-sort to find the n highest elements:
         weights_sorted = np.argsort(weights)[::-1]  # [:2] select last 2
         print('weights_sorted: ', weights_sorted)
         # TODO: Retrain with selected weights (4, then 2):
