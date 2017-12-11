@@ -24,26 +24,29 @@ from tensorflow.python.tools import optimize_for_inference_lib
 TIMESTAMP_START = datetime.datetime.fromtimestamp(time.time()).strftime('%Y%m%d_%H.%M.%S')
 VERSION_NUMBER = 'v0.1.2'
 DESCRIPTION_TRAINING_DATA = '_allset_'
-TRAINING_FOLDER_PATH = r'_data/ssvep_benchmark/PSD/S1'
-TEST_FOLDER_PATH = r'_data/ssvep_benchmark/PSD/S1_val'
+TRAINING_FOLDER_PATH = r'_data/my_data/S1_psd'
+TEST_FOLDER_PATH = r'_data/my_data/S1_psd_val'
 EXPORT_DIRECTORY = 'model_exports/' + VERSION_NUMBER + '/'
 MODEL_NAME = 'ssvep_net_8ch'
 CHECKPOINT_FILE = EXPORT_DIRECTORY + MODEL_NAME + '.ckpt'
-NUMBER_CLASSES = 4
 KEY_X_DATA_DICTIONARY = 'relevant_data'
 KEY_Y_DATA_DICTIONARY = 'Y'
-NUMBER_STEPS = 5000
-TRAIN_BATCH_SIZE = 128
-TEST_BATCH_SIZE = 64
-DEFAULT_IMAGE_SHAPE = [64, 128]
-DATA_WINDOW_SIZE = 256
+
+# IMAGE SHAPE/CHARACTERISTICS
+NUMBER_CLASSES = 5
+TOTAL_DATA_CHANNELS = 2
+DATA_WINDOW_SIZE = 128
+INPUT_IMAGE_SHAPE = [TOTAL_DATA_CHANNELS, DATA_WINDOW_SIZE, 1]
+DEFAULT_IMAGE_SHAPE = [TOTAL_DATA_CHANNELS, DATA_WINDOW_SIZE]
 MOVING_WINDOW_SHIFT = 16
-TOTAL_DATA_CHANNELS = 64
-SELECT_DATA_CHANNELS = np.asarray(range(1, 64))
+SELECT_DATA_CHANNELS = np.asarray(range(1, 3))
 NUMBER_DATA_CHANNELS = SELECT_DATA_CHANNELS.shape[0]  # Selects first int in shape
-LEARNING_RATE = 1e-5  # 'Step size' on n-D optimization plane
 
 # FOR MODEL DESIGN
+NUMBER_STEPS = 5000
+TRAIN_BATCH_SIZE = 256
+TEST_BATCH_SIZE = 64
+LEARNING_RATE = 1e-5  # 'Step size' on n-D optimization plane
 STRIDE_CONV2D = [1, 1, 1, 1]
 MAX_POOL_K_SIZE = [1, 2, 1, 1]
 MAX_POOL_STRIDE = [1, 2, 1, 1]
@@ -81,30 +84,6 @@ def moving_window(data, length, step):
     return zip(*[it.islice(stream, i_, None, step) for stream, i_ in zip(streams, it.count(step=1))])
 
 
-def separate_data(input_data):
-    data_window_list = list(moving_window(input_data, DATA_WINDOW_SIZE, MOVING_WINDOW_SHIFT))
-    shape = np.asarray(data_window_list).shape
-    x_list = []
-    y_list = []
-    for data_window in data_window_list:
-        data_window_array = np.asarray(data_window)
-        count_match = np.count_nonzero(data_window_array[:, TOTAL_DATA_CHANNELS] ==
-                                       data_window_array[0, TOTAL_DATA_CHANNELS])
-        if count_match == shape[1]:
-            x_window = data_window_array[:, SELECT_DATA_CHANNELS]
-            mm_scale = preprocessing.MinMaxScaler(feature_range=(-1, 1)).fit(x_window)
-            x_window = mm_scale.transform(x_window)
-
-            x_list.append(x_window)
-            y_list.append(data_window_array[0, TOTAL_DATA_CHANNELS])
-
-    # get unique class values and convert to dummy values
-    # convert lists to arrays; convert to 32-bit floating point
-    y_array = np.asarray(y_list)
-    x_array = np.asarray(x_list).astype(np.float32)
-    return x_array, y_array
-
-
 def load_data(data_directory):
     x_train_data = np.empty([0, *DEFAULT_IMAGE_SHAPE], np.float32)
     y_train_data = np.empty([0], np.float32)
@@ -113,9 +92,6 @@ def load_data(data_directory):
         x_array = loadmat(f).get(KEY_X_DATA_DICTIONARY)
         y_array = loadmat(f).get(KEY_Y_DATA_DICTIONARY)
         y_array = y_array.reshape([y_array.shape[1]])
-        # TODO: check shape and that # of samples match:
-        print('x_array.shape', x_array.shape)
-        print('y_array.shape', y_array.shape)
         # x_array, y_array = separate_data(relevant_data)
         x_train_data = np.concatenate((x_train_data, x_array), axis=0)
         y_train_data = np.concatenate((y_train_data, y_array), axis=0)
@@ -186,11 +162,11 @@ def get_activations(layer, input_val, shape, directory, file_name, sum_all=False
 
 
 # MODEL INPUT #
-x = tf.placeholder(tf.float32, shape=[None, DATA_WINDOW_SIZE, NUMBER_DATA_CHANNELS], name=input_node_name)
+x = tf.placeholder(tf.float32, shape=[None, NUMBER_DATA_CHANNELS, DATA_WINDOW_SIZE], name=input_node_name)
 keep_prob = tf.placeholder(tf.float32, name=keep_prob_node_name)
 y = tf.placeholder(tf.float32, shape=[None, NUMBER_CLASSES])
 
-x_input = tf.reshape(x, [-1, DATA_WINDOW_SIZE, NUMBER_DATA_CHANNELS, 1])
+x_input = tf.reshape(x, [-1, *INPUT_IMAGE_SHAPE])
 
 # first convolution and pooling
 W_conv1 = weight_variable(WEIGHT_VAR_CL1)

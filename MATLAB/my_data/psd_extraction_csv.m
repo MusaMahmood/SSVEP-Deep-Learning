@@ -7,7 +7,6 @@ Fs = 250;
 select_chs = 1:2;
 [b, a] = butter(3, 5*2/Fs, 'high');
 start = 125; whop = 32; wlen = 256;
-% relevant_data = P; 
 for f = 1:length(d)
     filename = d(f).name; 
     data = csvread(filename);
@@ -32,4 +31,5 @@ for f = 1:length(d)
     mkdir([output_dir]);
     f_n = [output_dir, filename(1:end-4), '_psd.mat'];
     save(f_n, 'relevant_data', 'Y');
+    clear Y
 end
