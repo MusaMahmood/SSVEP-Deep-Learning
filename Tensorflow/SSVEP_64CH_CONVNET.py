@@ -32,12 +32,12 @@ CHECKPOINT_FILE = EXPORT_DIRECTORY + MODEL_NAME + '.ckpt'
 NUMBER_CLASSES = 4  # 4?
 KEY_DATA_DICTIONARY = 'relevant_data'
 NUMBER_STEPS = 5000
-TRAIN_BATCH_SIZE = 48
-TEST_BATCH_SIZE = 32
+TRAIN_BATCH_SIZE = 128
+TEST_BATCH_SIZE = 64
 DATA_WINDOW_SIZE = 256
-MOVING_WINDOW_SHIFT = 32
+MOVING_WINDOW_SHIFT = 16
 TOTAL_DATA_CHANNELS = 64
-SELECT_DATA_CHANNELS = np.asarray(range(53, 64))
+SELECT_DATA_CHANNELS = np.asarray([53, 54, 55, 56, 57, 58, 59, 61, 62, 63]) - 1
 NUMBER_DATA_CHANNELS = SELECT_DATA_CHANNELS.shape[0]  # Selects first int in shape
 LEARNING_RATE = 1e-5  # 'Step size' on n-D optimization plane
 
@@ -147,8 +147,8 @@ def bias_variable(shape):
 
 
 # Convolution and max-pooling functions
-def conv2d(x_, weights):
-    return tf.nn.conv2d(x_, weights, strides=STRIDE_CONV2D, padding='SAME')
+def conv2d(x_, weights_):
+    return tf.nn.conv2d(x_, weights_, strides=STRIDE_CONV2D, padding='SAME')
 
 
 def max_pool_2x2(x_):
@@ -269,7 +269,8 @@ with tf.Session(config=config) as sess:
     print("\n Testing Accuracy:", test_accuracy, "\n\n")
 
     # Holdout Validation Accuracy:
-    # print("Holdout Validation:", sess.run(accuracy, feed_dict={x: x_val_data, y: y_val_data, keep_prob: 1.0}))
+    print("Holdout Validation:", sess.run(accuracy, feed_dict={x: x_val_data[0:128], y: y_val_data[0:128],
+                                                               keep_prob: 1.0}))
 
     # Comment to space things out:
     # Experimental Stuff:
@@ -292,9 +293,6 @@ with tf.Session(config=config) as sess:
         x_sample0 = x_val_data[1, :, :]
         weights = get_activations(h_conv1, x_sample0, input_shape, image_output_folder_name, filename, sum_all=True)
         print('weights', weights)
-        # TODO: Normalize weights:
-        # weights_norm = scaler.transform(weights)
-        # print('weights.normalized', weights_norm)
         # Read from the tail of the argsort to find the n highest elements:
         weights_sorted = np.argsort(weights)[::-1]  # [:2] select last 2
         print('weights_sorted: ', weights_sorted)
