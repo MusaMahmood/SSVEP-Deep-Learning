@@ -6,7 +6,7 @@ mkdir(output_dir); PLOT = 1;
 % filename = 'S1.mat';load(filename);  %temp: 
 Fs = 250;
 epochs = 6;
-Y = [0, 1, 2, 3, 4]; % 0 = null, 1-4 = ssvep. 
+Y_classes = [0, 1, 2, 3, 4]; % 0 = null, 1-4 = ssvep. 
 select_freqs = [1, 3, 5, 8];
 select_chs = 1:64;
 % relevant_data = zeros(1500, length(select_chs));
