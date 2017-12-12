@@ -54,8 +54,8 @@ BIAS_VAR_CL2 = 64
 
 DIVIDER = 2
 
-WEIGHT_VAR_CL1 = [NUMBER_CLASSES, NUMBER_DATA_CHANNELS, 1, BIAS_VAR_CL1]  # [5, NUMBER_DATA_CHANNELS, 1, 32]
-WEIGHT_VAR_CL2 = [NUMBER_CLASSES, NUMBER_DATA_CHANNELS, BIAS_VAR_CL1, BIAS_VAR_CL2]  # [5, NUMBER_DATA_CHANNELS, 32, 64]
+WEIGHT_VAR_CL1 = [NUMBER_CLASSES, NUMBER_DATA_CHANNELS, 1, BIAS_VAR_CL1]
+WEIGHT_VAR_CL2 = [NUMBER_CLASSES, NUMBER_DATA_CHANNELS, BIAS_VAR_CL1, BIAS_VAR_CL2]
 
 MAX_POOL_FLAT_SHAPE_FC1 = [-1, BIAS_VAR_CL1 * NUMBER_DATA_CHANNELS * (DATA_WINDOW_SIZE // DIVIDER)]
 
@@ -271,7 +271,7 @@ with tf.Session(config=config) as sess:
         print('weights_sorted: ', weights_sorted)
         # TODO: Retrain with selected weights (4, then 2):
 
-user_input = input('Export Current Model?')
-if user_input == "1" or user_input.lower() == "y":
-    saver.save(sess, CHECKPOINT_FILE)
-    export_model([input_node_name, keep_prob_node_name], output_node_name)
+    user_input = input('Export Current Model?')
+    if user_input == "1" or user_input.lower() == "y":
+        saver.save(sess, CHECKPOINT_FILE)
+        export_model([input_node_name, keep_prob_node_name], output_node_name)
