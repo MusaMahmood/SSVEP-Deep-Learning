@@ -2,12 +2,12 @@
 clear; close all; clc;
 d = dir([pwd '\S*.mat']);
 output_dir = 'output_dir\psd\';
-mkdir(output_dir); PLOT = 1;
+mkdir(output_dir); PLOT = 0;
 % filename = 'S1.mat';load(filename);  %temp: 
 Fs = 250;
 epochs = 6;
 Y_classes = [0, 1, 2, 3, 4]; % 0 = null, 1-4 = ssvep. 
-select_freqs = [1, 3, 5, 8];
+select_freqs = [1, 3, 5, 8, 13];
 select_chs = 1:64;
 % relevant_data = zeros(1500, length(select_chs));
 [b, a] = butter(3, 5*2/Fs, 'high');
@@ -30,12 +30,10 @@ for f = 1%:length(d)
                 end
                 relevant_data(w, :, :) = rescale_minmax(P(w, :, :));
                 if (PLOT)
-                    imagesc(select_chs, F, reshape(P(w, :, :), [size(P,2), size(P,3)])'); ylim([5 40])
-                    set(gca,'YDir','normal'); xlabel('Ch, #');ylabel('Frequency, Hz'); colormap(jet); cb = colorbar; ylabel(cb, 'Power (db)')
+                    plot_image(relevant_data, w, select_chs, F);
                 end
                 Y(w) = cl;
             end         
-
             % first 125 pts are class 0:
 %             relevant_data(:, length(select_chs)+1) = 0; %(2) = 1:250
 %             relevant_data(126:end, length(select_chs)+1) = cl;
@@ -45,4 +43,10 @@ for f = 1%:length(d)
             save(f_n, 'relevant_data', 'Y');
         end
     end
+end
+
+function N = plot_image(Pimage, w, select_chs, F)
+    imagesc(select_chs, F, reshape(Pimage(w, :, :), [size(Pimage,2), size(Pimage,3)])'); ylim([5 40])
+    set(gca,'YDir','normal'); xlabel('Ch, #');ylabel('Frequency, Hz'); colormap(jet); cb = colorbar; ylabel(cb, 'Power (db)')
+    N = 0;
 end
