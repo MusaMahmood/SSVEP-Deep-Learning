@@ -24,20 +24,20 @@ from tensorflow.python.tools import optimize_for_inference_lib
 TIMESTAMP_START = datetime.datetime.fromtimestamp(time.time()).strftime('%Y%m%d_%H.%M.%S')
 VERSION_NUMBER = 'v0.1.2'
 DESCRIPTION_TRAINING_DATA = '_allset_'
-TRAINING_FOLDER_PATH = r'_data/ssvep_benchmark/S1'
-TEST_FOLDER_PATH = r'_data/ssvep_benchmark/S1_val'
+TRAINING_FOLDER_PATH = r'ssvep_benchmark/filt/S1'
+# TEST_FOLDER_PATH = r'ssvep_benchmark/filt/S1_val'
 EXPORT_DIRECTORY = 'model_exports/' + VERSION_NUMBER + '/'
 MODEL_NAME = 'ssvep_net_8ch'
 CHECKPOINT_FILE = EXPORT_DIRECTORY + MODEL_NAME + '.ckpt'
-NUMBER_CLASSES = 4  # 4?
+NUMBER_CLASSES = 5
 KEY_DATA_DICTIONARY = 'relevant_data'
-NUMBER_STEPS = 5000
+NUMBER_STEPS = 2500
 TRAIN_BATCH_SIZE = 128
 TEST_BATCH_SIZE = 64
 DATA_WINDOW_SIZE = 256
-MOVING_WINDOW_SHIFT = 16
+MOVING_WINDOW_SHIFT = 32
 TOTAL_DATA_CHANNELS = 64
-SELECT_DATA_CHANNELS = np.asarray([53, 54, 55, 56, 57, 58, 59, 61, 62, 63]) - 1
+SELECT_DATA_CHANNELS = np.asarray(range(41, 65)) - 1
 NUMBER_DATA_CHANNELS = SELECT_DATA_CHANNELS.shape[0]  # Selects first int in shape
 LEARNING_RATE = 1e-5  # 'Step size' on n-D optimization plane
 
@@ -46,8 +46,8 @@ STRIDE_CONV2D = [1, 1, 1, 1]
 MAX_POOL_K_SIZE = [1, 2, 1, 1]
 MAX_POOL_STRIDE = [1, 2, 1, 1]
 
-BIAS_VAR_CL1 = 64
-BIAS_VAR_CL2 = 72
+BIAS_VAR_CL1 = 32
+BIAS_VAR_CL2 = 64
 
 DIVIDER = 4
 
@@ -90,7 +90,7 @@ def separate_data(input_data):
                                        data_window_array[0, TOTAL_DATA_CHANNELS])
         if count_match == shape[1]:
             x_window = data_window_array[:, SELECT_DATA_CHANNELS]
-            mm_scale = preprocessing.MinMaxScaler(feature_range=(-1, 1)).fit(x_window)
+            mm_scale = preprocessing.MinMaxScaler(feature_range=(0, 1)).fit(x_window)
             x_window = mm_scale.transform(x_window)
 
             x_list.append(x_window)
@@ -230,9 +230,14 @@ saver = tf.train.Saver()  # Initialize tf Saver
 
 # Load Data:
 x_data, y_data = load_data(TRAINING_FOLDER_PATH)
-x_val_data, y_val_data = load_data(TEST_FOLDER_PATH)
+# x_val_data, y_val_data = load_data(TEST_FOLDER_PATH)
 # Split training set:
-x_train, x_test, y_train, y_test = train_test_split(x_data, y_data, train_size=0.75, random_state=1)
+x_train, x_test0, y_train, y_test0 = train_test_split(x_data, y_data, train_size=0.75, random_state=1)
+x_test, x_val_data, y_test, y_val_data = train_test_split(x_test0, y_test0, train_size=0.50, random_state=1)
+
+print("samples: train batch: ", x_train.shape)
+print("samples: test batch: ", x_test.shape)
+print("samples: validation batch: ", x_val_data.shape)
 
 # TRAIN ROUTINE #
 init_op = tf.global_variables_initializer()
