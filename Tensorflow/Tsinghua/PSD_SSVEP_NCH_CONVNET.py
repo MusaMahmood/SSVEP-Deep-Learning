@@ -32,7 +32,9 @@ KEY_Y_DATA_DICTIONARY = 'Y'
 NUMBER_CLASSES = 4
 TOTAL_DATA_CHANNELS = 64
 DATA_WINDOW_SIZE = 128
-SELECT_DATA_CHANNELS = np.asarray([0, 5, 6, 9])
+# SELECT_DATA_CHANNELS = np.asarray([4, 6, 12, 13, 15, 21, 22, 23])  #S1 8-ch best
+# SELECT_DATA_CHANNELS = np.asarray([4, 13, 21, 22])  # S1 4ch best
+SELECT_DATA_CHANNELS = np.asarray([4, 22])
 NUMBER_DATA_CHANNELS = SELECT_DATA_CHANNELS.shape[0]  # Selects first int in shape
 DEFAULT_IMAGE_SHAPE = [NUMBER_DATA_CHANNELS, DATA_WINDOW_SIZE]
 INPUT_IMAGE_SHAPE = [1, NUMBER_DATA_CHANNELS, DATA_WINDOW_SIZE]
@@ -42,7 +44,7 @@ MODEL_NAME = 'ssvep_net_' + str(NUMBER_DATA_CHANNELS) + 'ch'
 CHECKPOINT_FILE = EXPORT_DIRECTORY + MODEL_NAME + '.ckpt'
 
 # FOR MODEL DESIGN
-NUMBER_STEPS = 1000
+NUMBER_STEPS = 5000
 TRAIN_BATCH_SIZE = 64
 TEST_BATCH_SIZE = 32
 LEARNING_RATE = 1e-5  # 'Step size' on n-D optimization plane
@@ -53,7 +55,10 @@ MAX_POOL_STRIDE = [1, 2, 1, 1]
 BIAS_VAR_CL1 = 32
 BIAS_VAR_CL2 = 64
 
-DIVIDER = 2
+if NUMBER_DATA_CHANNELS > 2:
+    DIVIDER = 2
+else:
+    DIVIDER = 1
 
 WEIGHT_VAR_CL1 = [NUMBER_CLASSES, NUMBER_DATA_CHANNELS, 1, BIAS_VAR_CL1]
 WEIGHT_VAR_CL2 = [NUMBER_CLASSES, NUMBER_DATA_CHANNELS, BIAS_VAR_CL1, BIAS_VAR_CL2]
@@ -222,6 +227,9 @@ config.gpu_options.allow_growth = True
 val_step = 0
 with tf.Session(config=config) as sess:
     sess.run(init_op)
+    # NOTE Restore old model if available
+    if os.path.isfile(EXPORT_DIRECTORY + MODEL_NAME + '.ckpt'):
+        saver.restore(sess, EXPORT_DIRECTORY + MODEL_NAME + '.ckpt')
 
     x_0 = np.zeros(INPUT_IMAGE_SHAPE, dtype=np.float32)
     print("Model Dimensions: ")
@@ -274,11 +282,12 @@ with tf.Session(config=config) as sess:
     # Read from the tail of the arg-sort to find the n highest elements:
     weights_sorted = np.argsort(weights)[::-1]  # [:2] select last 2
     print('weights_sorted: ', weights_sorted)
-    top_4_channel_select = np.argsort(weights)[::-1][:4]
-    print('Top 4 ch: ', top_4_channel_select)
-    top_2_channel_select = np.argsort(weights)[::-1][:2]
+    # top_8_channel_select = np.sort(np.argsort(weights)[::-1][:8])
+    # print('Top 8 ch: ', top_8_channel_select)
+    # top_4_channel_select = np.sort(np.argsort(weights)[::-1][:4])
+    # print('Top 4 ch: ', top_4_channel_select)
+    top_2_channel_select = np.sort(np.argsort(weights)[::-1][:2])
     print('Top 2 ch: ', top_2_channel_select)
-    # TODO: Retrain with selected weights (4, then 2):
 
     user_input = input('Export Current Model?')
     if user_input == "1" or user_input.lower() == "y":

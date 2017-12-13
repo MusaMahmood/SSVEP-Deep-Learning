@@ -274,11 +274,12 @@ with tf.Session(config=config) as sess:
     # Read from the tail of the arg-sort to find the n highest elements:
     weights_sorted = np.argsort(weights)[::-1]  # [:2] select last 2
     print('weights_sorted: ', weights_sorted)
-    top_4_channel_select = np.argsort(weights)[::-1][:4]
+    top_8_channel_select = np.sort(np.argsort(weights)[::-1][:8])
+    print('Top 8 ch: ', top_8_channel_select)
+    top_4_channel_select = np.sort(np.argsort(weights)[::-1][:4])
     print('Top 4 ch: ', top_4_channel_select)
-    top_2_channel_select = np.argsort(weights)[::-1][:2]
+    top_2_channel_select = np.sort(np.argsort(weights)[::-1][:2])
     print('Top 2 ch: ', top_2_channel_select)
-    # TODO: Retrain with selected weights (4, then 2):
 
     user_input = input('Export Current Model?')
     if user_input == "1" or user_input.lower() == "y":
