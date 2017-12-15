@@ -3,7 +3,6 @@
 # TF 1.2.1
 
 # IMPORTS:
-# import matplotlib.pyplot as p
 import tensorflow as tf
 import os.path as path
 import itertools as it
@@ -24,20 +23,20 @@ from tensorflow.python.tools import optimize_for_inference_lib
 TIMESTAMP_START = datetime.datetime.fromtimestamp(time.time()).strftime('%Y%m%d_%H.%M.%S')
 VERSION_NUMBER = 'v0.1.2'
 DESCRIPTION_TRAINING_DATA = '_allset_'
-TRAINING_FOLDER_PATH = r'ssvep_benchmark/filt/S1'
-# TEST_FOLDER_PATH = r'ssvep_benchmark/filt/S1_val'
+TRAINING_FOLDER_PATH = r'ssvep_benchmark/f3c/S1'
+TEST_FOLDER_PATH = r'ssvep_benchmark/f3c/S1v'
 EXPORT_DIRECTORY = 'model_exports/' + VERSION_NUMBER + '/'
 MODEL_NAME = 'ssvep_net_8ch'
 CHECKPOINT_FILE = EXPORT_DIRECTORY + MODEL_NAME + '.ckpt'
-NUMBER_CLASSES = 5
+NUMBER_CLASSES = 3
 KEY_DATA_DICTIONARY = 'relevant_data'
 NUMBER_STEPS = 2500
 TRAIN_BATCH_SIZE = 128
 TEST_BATCH_SIZE = 64
-DATA_WINDOW_SIZE = 256
+DATA_WINDOW_SIZE = 200
 MOVING_WINDOW_SHIFT = 32
 TOTAL_DATA_CHANNELS = 64
-SELECT_DATA_CHANNELS = np.asarray(range(41, 65)) - 1
+SELECT_DATA_CHANNELS = np.asarray(range(1, 65)) - 1
 NUMBER_DATA_CHANNELS = SELECT_DATA_CHANNELS.shape[0]  # Selects first int in shape
 LEARNING_RATE = 1e-5  # 'Step size' on n-D optimization plane
 
@@ -46,8 +45,8 @@ STRIDE_CONV2D = [1, 1, 1, 1]
 MAX_POOL_K_SIZE = [1, 2, 1, 1]
 MAX_POOL_STRIDE = [1, 2, 1, 1]
 
-BIAS_VAR_CL1 = 32
-BIAS_VAR_CL2 = 64
+BIAS_VAR_CL1 = 8
+BIAS_VAR_CL2 = 16
 
 DIVIDER = 4
 
@@ -230,10 +229,10 @@ saver = tf.train.Saver()  # Initialize tf Saver
 
 # Load Data:
 x_data, y_data = load_data(TRAINING_FOLDER_PATH)
-# x_val_data, y_val_data = load_data(TEST_FOLDER_PATH)
+x_val_data, y_val_data = load_data(TEST_FOLDER_PATH)
 # Split training set:
-x_train, x_test0, y_train, y_test0 = train_test_split(x_data, y_data, train_size=0.75, random_state=1)
-x_test, x_val_data, y_test, y_val_data = train_test_split(x_test0, y_test0, train_size=0.50, random_state=1)
+x_train, x_test, y_train, y_test = train_test_split(x_data, y_data, train_size=0.75, random_state=1)
+# x_test, x_val_data, y_test, y_val_data = train_test_split(x_test0, y_test0, train_size=0.50, random_state=1)
 
 print("samples: train batch: ", x_train.shape)
 print("samples: test batch: ", x_test.shape)
@@ -249,6 +248,17 @@ with tf.Session(config=config) as sess:
     sess.run(init_op)
     # save model as pbtxt:
     tf.train.write_graph(sess.graph_def, EXPORT_DIRECTORY, MODEL_NAME + '.pbtxt', True)
+
+    x_0 = np.zeros([1, DATA_WINDOW_SIZE, NUMBER_DATA_CHANNELS], dtype=np.float32)
+    print("Model Dimensions: ")
+    print("h_conv1: ", sess.run(h_conv1, feed_dict={x: x_0, keep_prob: 1.0}).shape)
+    print("h_pool1: ", sess.run(h_pool1, feed_dict={x: x_0, keep_prob: 1.0}).shape)
+    print("h_conv2: ", sess.run(h_conv2, feed_dict={x: x_0, keep_prob: 1.0}).shape)
+    print("h_pool2: ", sess.run(h_pool2, feed_dict={x: x_0, keep_prob: 1.0}).shape)
+    print("h_pool2_flat: ", sess.run(h_pool2_flat, feed_dict={x: x_0, keep_prob: 1.0}).shape)
+    print("h_fc1: ", sess.run(h_fc1, feed_dict={x: x_0, keep_prob: 1.0}).shape)
+    print("h_fc2_drop: ", sess.run(h_fc2_drop, feed_dict={x: x_0, keep_prob: 1.0}).shape)
+    print("y_conv: ", sess.run(y_conv, feed_dict={x: x_0, keep_prob: 1.0}).shape)
 
     for i in range(NUMBER_STEPS):
         offset = (i * TRAIN_BATCH_SIZE) % (x_train.shape[0] - TRAIN_BATCH_SIZE)

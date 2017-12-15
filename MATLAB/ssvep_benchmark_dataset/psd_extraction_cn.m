@@ -1,7 +1,7 @@
 %% PSD Extraction:
 clear; close all; clc;
 d = dir([pwd '\S*.mat']);
-output_dir = 'output_dir\psd\';
+output_dir = 'output_dir\psd_1s_200p\';
 mkdir(output_dir); PLOT = 0;
 % filename = 'S1.mat';load(filename);  %temp: 
 Fs = 250;
@@ -11,11 +11,11 @@ select_freqs = [1, 3, 5, 8, 13];
 select_chs = 1:64;
 % relevant_data = zeros(1500, length(select_chs));
 [b, a] = butter(3, 5*2/Fs, 'high');
-start = 125; whop = 32; wlen = 256;
+start = 125; whop = 32; wlen = 400;
 wStart = start:whop:(1500-wlen);
 wEnd = wStart + wlen - 1;
-P = zeros(length(wStart), length(select_chs), wlen/2);
-relevant_data = P; 
+% P = zeros(length(wStart), length(select_chs), wlen);
+% relevant_data = P; 
 for f = 1%:length(d)
     filename = d(f).name; load(filename);
     data_select = data(select_chs, :, select_freqs, :);
@@ -25,12 +25,15 @@ for f = 1%:length(d)
             single_epoch = data_select(:, :, cl, ep)';
             for w = 1:length(wStart)
                 filtered_window = filtfilt(b, a, single_epoch(wStart(w):wEnd(w), :));
+                % pad with zeros
+%                 FW = [filtered_window; zeros(wlen, length(select_chs))];
                 for ch = 1:length(select_chs)
                     [P(w, ch, :), F] = welch_estimator_ORIG(filtered_window(:,ch), Fs, hann(wlen));
                 end
                 relevant_data(w, :, :) = rescale_minmax(P(w, :, :));
                 if (PLOT)
                     plot_image(relevant_data, w, select_chs, F);
+                    in1 = input('Continue? \n');
                 end
                 Y(w) = cl;
             end         

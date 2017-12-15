@@ -22,19 +22,20 @@ from tensorflow.python.tools import optimize_for_inference_lib
 TIMESTAMP_START = datetime.datetime.fromtimestamp(time.time()).strftime('%Y%m%d_%H.%M.%S')
 VERSION_NUMBER = 'v0.1.2'
 DESCRIPTION_TRAINING_DATA = '_allset_'
-TRAINING_FOLDER_PATH = r'ssvep_benchmark/PSD/S1'
-TEST_FOLDER_PATH = r'ssvep_benchmark/PSD/S1_val'
+TRAINING_FOLDER_PATH = r'ssvep_benchmark/psd_200p/S1'
+TEST_FOLDER_PATH = r'ssvep_benchmark/psd_200p/S1val'
 EXPORT_DIRECTORY = 'model_exports/' + VERSION_NUMBER + '/'
 KEY_X_DATA_DICTIONARY = 'relevant_data'
 KEY_Y_DATA_DICTIONARY = 'Y'
 
 # IMAGE SHAPE/CHARACTERISTICS
-NUMBER_CLASSES = 4
+NUMBER_CLASSES = 5
 TOTAL_DATA_CHANNELS = 64
-DATA_WINDOW_SIZE = 128
+DATA_WINDOW_SIZE = 200  # TODO: Make sure this is correct.
 # SELECT_DATA_CHANNELS = np.asarray([4, 6, 12, 13, 15, 21, 22, 23])  #S1 8-ch best
 # SELECT_DATA_CHANNELS = np.asarray([4, 13, 21, 22])  # S1 4ch best
-SELECT_DATA_CHANNELS = np.asarray([4, 22])
+# SELECT_DATA_CHANNELS = np.asarray([4, 22])
+SELECT_DATA_CHANNELS = np.asarray(range(33, 65)) - 1
 NUMBER_DATA_CHANNELS = SELECT_DATA_CHANNELS.shape[0]  # Selects first int in shape
 DEFAULT_IMAGE_SHAPE = [NUMBER_DATA_CHANNELS, DATA_WINDOW_SIZE]
 INPUT_IMAGE_SHAPE = [1, NUMBER_DATA_CHANNELS, DATA_WINDOW_SIZE]
@@ -282,10 +283,12 @@ with tf.Session(config=config) as sess:
     # Read from the tail of the arg-sort to find the n highest elements:
     weights_sorted = np.argsort(weights)[::-1]  # [:2] select last 2
     print('weights_sorted: ', weights_sorted)
-    # top_8_channel_select = np.sort(np.argsort(weights)[::-1][:8])
-    # print('Top 8 ch: ', top_8_channel_select)
-    # top_4_channel_select = np.sort(np.argsort(weights)[::-1][:4])
-    # print('Top 4 ch: ', top_4_channel_select)
+    if NUMBER_DATA_CHANNELS > 8:
+        top_8_channel_select = np.sort(np.argsort(weights)[::-1][:8])
+        print('Top 8 ch: ', top_8_channel_select)
+    if NUMBER_DATA_CHANNELS > 4:
+        top_4_channel_select = np.sort(np.argsort(weights)[::-1][:4])
+        print('Top 4 ch: ', top_4_channel_select)
     top_2_channel_select = np.sort(np.argsort(weights)[::-1][:2])
     print('Top 2 ch: ', top_2_channel_select)
 

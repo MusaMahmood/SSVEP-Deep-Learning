@@ -1,11 +1,11 @@
 %% SSVEP CN DATASET:
 clear; close all; clc;
 d = dir([pwd '\S*.mat']);
-output_dir = 'output_dir\filt\';
+output_dir = 'output_dir\f3c\';
 mkdir(output_dir);
 Fs = 250;
 epochs = 6;
-select_freqs = [1, 3, 5, 8, 14]; num_classes = length(select_freqs);
+select_freqs = [15 28 37]; num_classes = length(select_freqs); %[1, 3, 5, 8, 14];
 select_chs = 1:64; num_chs = length(select_chs);
 relevant_data_0 = zeros(1500, num_chs); 
 relevant_data = [];

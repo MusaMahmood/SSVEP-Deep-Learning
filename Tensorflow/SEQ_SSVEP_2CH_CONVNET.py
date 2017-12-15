@@ -3,7 +3,6 @@
 # TF 1.2.1
 
 # IMPORTS:
-# import matplotlib.pyplot as p
 import tensorflow as tf
 import os.path as path
 import itertools as it
@@ -23,8 +22,6 @@ from tensorflow.python.tools import optimize_for_inference_lib
 TIMESTAMP_START = datetime.datetime.fromtimestamp(time.time()).strftime('%Y%m%d_%H.%M.%S')
 VERSION_NUMBER = 'v0.1.0'
 # DESCRIPTION_TRAINING_DATA = '_h1set_'
-# TRAINING_FOLDER_PATH = r'_data/S1copy/ah'
-# TEST_FOLDER_PATH = r'_data/S1copy/bh'
 DESCRIPTION_TRAINING_DATA = '_allset_'
 TRAINING_FOLDER_PATH = r'_data/S1copy/a'
 TEST_FOLDER_PATH = r'_data/S1copy/b'
@@ -43,6 +40,7 @@ NUMBER_CLASSES = 5
 
 # FOR MODEL DESIGN
 STRIDE_CONV2D = [1, 1, 1, 1]
+
 MAX_POOL_KSIZE = [1, 2, 1, 1]
 MAX_POOL_STRIDE = [1, 2, 1, 1]
 
@@ -217,6 +215,9 @@ x_data, y_data = load_data(TRAINING_FOLDER_PATH)
 x_val_data, y_val_data = load_data(TEST_FOLDER_PATH)
 # Split training set:
 x_train, x_test, y_train, y_test = train_test_split(x_data, y_data, train_size=0.75, random_state=1)
+print("samples: train batch: ", x_train.shape)
+print("samples: test batch: ", x_test.shape)
+print("samples: validation batch: ", x_val_data.shape)
 
 # TRAIN ROUTINE #
 init_op = tf.global_variables_initializer()
@@ -228,6 +229,17 @@ with tf.Session(config=config) as sess:
     sess.run(init_op)
     # save model as pbtxt:
     tf.train.write_graph(sess.graph_def, EXPORT_DIRECTORY, MODEL_NAME + '.pbtxt', True)
+
+    x_0 = np.zeros([1, DATA_WINDOW_SIZE, NUMBER_DATA_CHANNELS], dtype=np.float32)
+    print("Model Dimensions: ")
+    print("h_conv1: ", sess.run(h_conv1, feed_dict={x: x_0, keep_prob: 1.0}).shape)
+    print("h_pool1: ", sess.run(h_pool1, feed_dict={x: x_0, keep_prob: 1.0}).shape)
+    print("h_conv2: ", sess.run(h_conv2, feed_dict={x: x_0, keep_prob: 1.0}).shape)
+    print("h_pool2: ", sess.run(h_pool2, feed_dict={x: x_0, keep_prob: 1.0}).shape)
+    print("h_pool2_flat: ", sess.run(h_pool2_flat, feed_dict={x: x_0, keep_prob: 1.0}).shape)
+    print("h_fc1: ", sess.run(h_fc1, feed_dict={x: x_0, keep_prob: 1.0}).shape)
+    print("h_fc2_drop: ", sess.run(h_fc2_drop, feed_dict={x: x_0, keep_prob: 1.0}).shape)
+    print("y_conv: ", sess.run(y_conv, feed_dict={x: x_0, keep_prob: 1.0}).shape)
 
     for i in range(NUMBER_STEPS):
         offset = (i * TRAIN_BATCH_SIZE) % (x_train.shape[0] - TRAIN_BATCH_SIZE)
@@ -246,27 +258,13 @@ with tf.Session(config=config) as sess:
             print("Validation step %d, validation accuracy %g" % (val_step, val_accuracy))
             val_step += 1
 
-        train_step.run(feed_dict={x: batch_x_train, y: batch_y_train, keep_prob: 0.25})
+        train_step.run(feed_dict={x: batch_x_train, y: batch_y_train, keep_prob: 0.50})
 
     # Run test data (entire set) to see accuracy.
     test_accuracy = sess.run(accuracy, feed_dict={x: x_test, y: y_test, keep_prob: 1.0})  # original
     print("\n Testing Accuracy:", test_accuracy, "\n\n")
     # Holdout Validation Accuracy:
     print("Holdout Validation:", sess.run(accuracy, feed_dict={x: x_val_data, y: y_val_data, keep_prob: 1.0}))
-
-    # Comment to space things out:
-    # Experimental Stuff:
-    x_0 = np.zeros((1, DATA_WINDOW_SIZE, NUMBER_DATA_CHANNELS), dtype=np.float32)
-    print("Model Dimensions: ")
-    print("h_conv1: ", sess.run(h_conv1, feed_dict={x: x_0, keep_prob: 1.0}).shape)
-    print("h_conv2: ", sess.run(h_conv2, feed_dict={x: x_0, keep_prob: 1.0}).shape)
-    print("FC1: ", sess.run(h_fc1, feed_dict={x: x_0, keep_prob: 1.0}).shape)
-    print("y_conv: ", sess.run(y_conv, feed_dict={x: x_0, keep_prob: 1.0}).shape)
-    # print("outputs: ", sess.run(outputs, feed_dict={x: x_0, keep_prob: 1.0}))
-    # Get one sample and see what it outputs (Activations?) ?
-    # for i in range(x_val_data.shape[0]):
-    #     x_0 = np.reshape(x_val_data[i, :, :], [1, DATA_WINDOW_SIZE, NUMBER_DATA_CHANNELS])
-    #     print("outputs #: ", str(i), sess.run(outputs, feed_dict={x: x_0, keep_prob: 1.0}))
 
     # Save First Conv Hidden layer to x CSV files: shape[3] is the # of weights
     x_0 = np.reshape(x_val_data[1, :, :], [1, DATA_WINDOW_SIZE, NUMBER_DATA_CHANNELS])
@@ -288,11 +286,7 @@ with tf.Session(config=config) as sess:
         w_reshape = np.reshape(h_conv2_np[:, :, :, i], [DATA_WINDOW_SIZE // 2, NUMBER_DATA_CHANNELS])
         pd.DataFrame(w_reshape).to_csv(filename, index=False, header=False)
 
-        # p.figure(1, figsize=(20, 20))
-        # p.title("W_conv1")
-        # p.imshow(w_reshape, interpolation="nearest", cmap="gray")
-
-user_input = input('Export Current Model?')
-if user_input == "1" or user_input.lower() == "y":
-    saver.save(sess, EXPORT_DIRECTORY + MODEL_NAME + '.ckpt')
-    export_model([input_node_name, keep_prob_node_name], output_node_name)
+    user_input = input('Export Current Model?')
+    if user_input == "1" or user_input.lower() == "y":
+        saver.save(sess, EXPORT_DIRECTORY + MODEL_NAME + '.ckpt')
+        export_model([input_node_name, keep_prob_node_name], output_node_name)

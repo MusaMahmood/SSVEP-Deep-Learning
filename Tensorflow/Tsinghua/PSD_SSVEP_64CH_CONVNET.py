@@ -22,16 +22,16 @@ from tensorflow.python.tools import optimize_for_inference_lib
 TIMESTAMP_START = datetime.datetime.fromtimestamp(time.time()).strftime('%Y%m%d_%H.%M.%S')
 VERSION_NUMBER = 'v0.1.2'
 DESCRIPTION_TRAINING_DATA = '_allset_'
-TRAINING_FOLDER_PATH = r'ssvep_benchmark/PSD/S1'
-TEST_FOLDER_PATH = r'ssvep_benchmark/PSD/S1_val'
+TRAINING_FOLDER_PATH = r'ssvep_benchmark/psd_large/S1'
+TEST_FOLDER_PATH = r'ssvep_benchmark/psd_large/S1val'
 EXPORT_DIRECTORY = 'model_exports/' + VERSION_NUMBER + '/'
 KEY_X_DATA_DICTIONARY = 'relevant_data'
 KEY_Y_DATA_DICTIONARY = 'Y'
 
 # IMAGE SHAPE/CHARACTERISTICS
-NUMBER_CLASSES = 4
+NUMBER_CLASSES = 5
 TOTAL_DATA_CHANNELS = 64
-DATA_WINDOW_SIZE = 128
+DATA_WINDOW_SIZE = 256  # 128
 SELECT_DATA_CHANNELS = np.asarray(range(0, 64))
 NUMBER_DATA_CHANNELS = SELECT_DATA_CHANNELS.shape[0]  # Selects first int in shape
 DEFAULT_IMAGE_SHAPE = [NUMBER_DATA_CHANNELS, DATA_WINDOW_SIZE]
