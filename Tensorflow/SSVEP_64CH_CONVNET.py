@@ -23,20 +23,20 @@ from tensorflow.python.tools import optimize_for_inference_lib
 TIMESTAMP_START = datetime.datetime.fromtimestamp(time.time()).strftime('%Y%m%d_%H.%M.%S')
 VERSION_NUMBER = 'v0.1.2'
 DESCRIPTION_TRAINING_DATA = '_allset_'
-TRAINING_FOLDER_PATH = r'ssvep_benchmark/f3c/S1'
-TEST_FOLDER_PATH = r'ssvep_benchmark/f3c/S1v'
+TRAINING_FOLDER_PATH = r'_data/S2_mat'
+TEST_FOLDER_PATH = r'_data/S2_mat/val'
 EXPORT_DIRECTORY = 'model_exports/' + VERSION_NUMBER + '/'
 MODEL_NAME = 'ssvep_net_8ch'
 CHECKPOINT_FILE = EXPORT_DIRECTORY + MODEL_NAME + '.ckpt'
-NUMBER_CLASSES = 3
+NUMBER_CLASSES = 5
 KEY_DATA_DICTIONARY = 'relevant_data'
-NUMBER_STEPS = 2500
-TRAIN_BATCH_SIZE = 128
-TEST_BATCH_SIZE = 64
-DATA_WINDOW_SIZE = 200
+NUMBER_STEPS = 10000
+TRAIN_BATCH_SIZE = 64
+TEST_BATCH_SIZE = 50
+DATA_WINDOW_SIZE = 300
 MOVING_WINDOW_SHIFT = 32
-TOTAL_DATA_CHANNELS = 64
-SELECT_DATA_CHANNELS = np.asarray(range(1, 65)) - 1
+TOTAL_DATA_CHANNELS = 40
+SELECT_DATA_CHANNELS = np.asarray(range(0, 32))
 NUMBER_DATA_CHANNELS = SELECT_DATA_CHANNELS.shape[0]  # Selects first int in shape
 LEARNING_RATE = 1e-5  # 'Step size' on n-D optimization plane
 
@@ -45,18 +45,19 @@ STRIDE_CONV2D = [1, 1, 1, 1]
 MAX_POOL_K_SIZE = [1, 2, 1, 1]
 MAX_POOL_STRIDE = [1, 2, 1, 1]
 
-BIAS_VAR_CL1 = 8
-BIAS_VAR_CL2 = 16
+BIAS_VAR_CL1 = 32
+BIAS_VAR_CL2 = 64
 
 DIVIDER = 4
 
 WEIGHT_VAR_CL1 = [NUMBER_CLASSES, NUMBER_DATA_CHANNELS, 1, BIAS_VAR_CL1]  # [5, NUMBER_DATA_CHANNELS, 1, 32]
 WEIGHT_VAR_CL2 = [NUMBER_CLASSES, NUMBER_DATA_CHANNELS, BIAS_VAR_CL1, BIAS_VAR_CL2]  # [5, NUMBER_DATA_CHANNELS, 32, 64]
 
-WEIGHT_VAR_FC1 = [(DATA_WINDOW_SIZE // DIVIDER) * NUMBER_DATA_CHANNELS * BIAS_VAR_CL2, BIAS_VAR_CL1 ** 2]
+BIAS_VAR_FC1 = [1024]
+
+WEIGHT_VAR_FC1 = [(DATA_WINDOW_SIZE // DIVIDER) * NUMBER_DATA_CHANNELS * BIAS_VAR_CL2, 1024]
 MAX_POOL_FLAT_SHAPE_FC1 = [-1, NUMBER_DATA_CHANNELS * (DATA_WINDOW_SIZE // DIVIDER) * BIAS_VAR_CL2]
 
-BIAS_VAR_FC1 = [(BIAS_VAR_CL1 ** 2)]
 WEIGHT_VAR_FC_OUTPUT = [*BIAS_VAR_FC1, NUMBER_CLASSES]
 
 BIAS_VAR_FC_OUTPUT = [NUMBER_CLASSES]
@@ -155,25 +156,29 @@ def max_pool_2x2(x_):
                           strides=MAX_POOL_STRIDE, padding='SAME')
 
 
-def get_activations(layer, input_val, shape, directory, file_name, sum_all=False):
-    os.makedirs(directory)
+def get_activations(layer, input_val, shape, directory, file_name, sum_all=False, save_data=False):
+    os.makedirs(directory, exist_ok=True)
     units = sess.run(layer, feed_dict={x: np.reshape(input_val, shape, order='F'), keep_prob: 1.0})
-    print("units.shape: ", units.shape)
+
     # plot_nn_filter(units, directory + file_name, True)
     new_shape = [units.shape[1], units.shape[2]]
     feature_maps = units.shape[3]
     filename_ = directory + file_name
     if sum_all:
         new_array = np.reshape(units.sum(axis=3), new_shape)
-        pd.DataFrame(new_array).to_csv(filename_ + '_weight_matrix' + '.csv', index=False, header=False)
+        if save_data:
+            print("units.shape: ", units.shape)
+            pd.DataFrame(new_array).to_csv(filename_ + '_weight_matrix' + '.csv', index=False, header=False)
         summed_array = new_array.sum(axis=0)
-        pd.DataFrame(summed_array).to_csv(filename_ + '_sum_all' + '.csv', index=False, header=False)
-        print('All Values:')
+        if save_data:
+            pd.DataFrame(summed_array).to_csv(filename_ + '_sum_all' + '.csv', index=False, header=False)
+            print('All Values:')
         return summed_array
     else:
-        for i0 in range(feature_maps):
-            pd.DataFrame(units[:, :, :, i0].reshape(new_shape)).to_csv(
-                filename_ + '_' + str(i0 + 1) + '.csv', index=False, header=False)
+        if save_data:
+            for i0 in range(feature_maps):
+                pd.DataFrame(units[:, :, :, i0].reshape(new_shape)).to_csv(
+                    filename_ + '_' + str(i0 + 1) + '.csv', index=False, header=False)
         return units
 
 
@@ -207,13 +212,13 @@ b_fc1 = bias_variable(BIAS_VAR_FC1)
 
 h_fc1 = tf.nn.relu(tf.matmul(h_pool2_flat, W_fc1) + b_fc1)
 
-h_fc2_drop = tf.nn.dropout(h_fc1, keep_prob)
+h_fc1_drop = tf.nn.dropout(h_fc1, keep_prob)
 
 # weight and bias of the output layer
 W_fco = weight_variable(WEIGHT_VAR_FC_OUTPUT)
 b_fco = bias_variable(BIAS_VAR_FC_OUTPUT)
 
-y_conv = tf.matmul(h_fc2_drop, W_fco) + b_fco
+y_conv = tf.matmul(h_fc1_drop, W_fco) + b_fco
 outputs = tf.nn.softmax(y_conv, name=output_node_name)
 
 # training and reducing the cost/loss function
@@ -229,10 +234,10 @@ saver = tf.train.Saver()  # Initialize tf Saver
 
 # Load Data:
 x_data, y_data = load_data(TRAINING_FOLDER_PATH)
-x_val_data, y_val_data = load_data(TEST_FOLDER_PATH)
+# x_val_data, y_val_data = load_data(TEST_FOLDER_PATH)
 # Split training set:
 x_train, x_test, y_train, y_test = train_test_split(x_data, y_data, train_size=0.75, random_state=1)
-# x_test, x_val_data, y_test, y_val_data = train_test_split(x_test0, y_test0, train_size=0.50, random_state=1)
+x_test, x_val_data, y_test, y_val_data = train_test_split(x_test, y_test, train_size=0.50, random_state=1)
 
 print("samples: train batch: ", x_train.shape)
 print("samples: test batch: ", x_test.shape)
@@ -257,7 +262,7 @@ with tf.Session(config=config) as sess:
     print("h_pool2: ", sess.run(h_pool2, feed_dict={x: x_0, keep_prob: 1.0}).shape)
     print("h_pool2_flat: ", sess.run(h_pool2_flat, feed_dict={x: x_0, keep_prob: 1.0}).shape)
     print("h_fc1: ", sess.run(h_fc1, feed_dict={x: x_0, keep_prob: 1.0}).shape)
-    print("h_fc2_drop: ", sess.run(h_fc2_drop, feed_dict={x: x_0, keep_prob: 1.0}).shape)
+    print("h_fc1_drop: ", sess.run(h_fc1_drop, feed_dict={x: x_0, keep_prob: 1.0}).shape)
     print("y_conv: ", sess.run(y_conv, feed_dict={x: x_0, keep_prob: 1.0}).shape)
 
     for i in range(NUMBER_STEPS):
@@ -280,7 +285,7 @@ with tf.Session(config=config) as sess:
         train_step.run(feed_dict={x: batch_x_train, y: batch_y_train, keep_prob: 0.25})
 
     # Run test data (entire set) to see accuracy.
-    test_accuracy = sess.run(accuracy, feed_dict={x: x_test, y: y_test, keep_prob: 1.0})  # original
+    test_accuracy = sess.run(accuracy, feed_dict={x: x_test[0:128], y: y_test[0:128], keep_prob: 1.0})  # original
     print("\n Testing Accuracy:", test_accuracy, "\n\n")
 
     # Holdout Validation Accuracy:
@@ -298,22 +303,30 @@ with tf.Session(config=config) as sess:
     print("h_pool2: ", sess.run(h_pool2, feed_dict={x: x_0, keep_prob: 1.0}).shape)
     print("h_pool2_flat: ", sess.run(h_pool2_flat, feed_dict={x: x_0, keep_prob: 1.0}).shape)
     print("h_fc1: ", sess.run(h_fc1, feed_dict={x: x_0, keep_prob: 1.0}).shape)
-    print("h_fc2_drop: ", sess.run(h_fc2_drop, feed_dict={x: x_0, keep_prob: 1.0}).shape)
+    print("h_fc1_drop: ", sess.run(h_fc1_drop, feed_dict={x: x_0, keep_prob: 1.0}).shape)
     print("y_conv: ", sess.run(y_conv, feed_dict={x: x_0, keep_prob: 1.0}).shape)
     # Get one sample and see what it outputs (Activations?) ?
     image_output_folder_name = EXPORT_DIRECTORY + DESCRIPTION_TRAINING_DATA + TIMESTAMP_START + '/' + 'h_conv1/'
     filename = 'sum_h_conv1'
-    user_input = input('Extract & Analyze Maps?')
-    if user_input == "1" or user_input.lower() == "y":
-        x_sample0 = x_val_data[1, :, :]
-        weights = get_activations(h_conv1, x_sample0, input_shape, image_output_folder_name, filename, sum_all=True)
-        print('weights', weights)
-        # Read from the tail of the argsort to find the n highest elements:
-        weights_sorted = np.argsort(weights)[::-1]  # [:2] select last 2
-        print('weights_sorted: ', weights_sorted)
-        # TODO: Retrain with selected weights (4, then 2):
+    print('Extract & Analyze Maps?')
+    x_sample0 = x_val_data[1, :, :]  # Save weights once
+    get_activations(h_conv1, x_sample0, input_shape, image_output_folder_name, filename, sum_all=True, save_data=True)
+    weights = np.zeros([NUMBER_DATA_CHANNELS])
+    for i in range(0, 500):
+        x_sample0 = x_val_data[i, :, :]
+        weight_sample = get_activations(h_conv1, x_sample0, input_shape,
+                                        image_output_folder_name, filename, sum_all=True, save_data=False)
+        for w in range(0, weight_sample.shape[0]):
+            weights[w] += weight_sample[w]
+    # Take Average:
+    weights = weights/500
+    print('weights', weights)
+    # Read from the tail of the argsort to find the n highest elements:
+    weights_sorted = np.argsort(weights)[::-1]  # [:2] select last 2
+    print('weights_sorted: ', weights_sorted)
+    # TODO: Retrain with selected weights (4, then 2):
 
-user_input = input('Export Current Model?')
-if user_input == "1" or user_input.lower() == "y":
-    saver.save(sess, CHECKPOINT_FILE)
-    export_model([input_node_name, keep_prob_node_name], output_node_name)
+    # user_input = input('Export Current Model?')
+    # if user_input == "1" or user_input.lower() == "y":
+    #     saver.save(sess, CHECKPOINT_FILE)
+    #     export_model([input_node_name, keep_prob_node_name], output_node_name)
