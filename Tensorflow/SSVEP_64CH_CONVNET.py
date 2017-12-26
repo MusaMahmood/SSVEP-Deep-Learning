@@ -23,19 +23,19 @@ from tensorflow.python.tools import optimize_for_inference_lib
 TIMESTAMP_START = datetime.datetime.fromtimestamp(time.time()).strftime('%Y%m%d_%H.%M.%S')
 VERSION_NUMBER = 'v0.1.2'
 DESCRIPTION_TRAINING_DATA = '_allset_'
-TRAINING_FOLDER_PATH = r'_data/S2_mat'
-TEST_FOLDER_PATH = r'_data/S2_mat/val'
+TRAINING_FOLDER_PATH = r'_data/S1_32CH_10s'
+TEST_FOLDER_PATH = r'_data/S1_32CH_10s/val'
 EXPORT_DIRECTORY = 'model_exports/' + VERSION_NUMBER + '/'
 MODEL_NAME = 'ssvep_net_8ch'
 CHECKPOINT_FILE = EXPORT_DIRECTORY + MODEL_NAME + '.ckpt'
 NUMBER_CLASSES = 5
 KEY_DATA_DICTIONARY = 'relevant_data'
-NUMBER_STEPS = 10000
+NUMBER_STEPS = 7500
 TRAIN_BATCH_SIZE = 64
 TEST_BATCH_SIZE = 50
 DATA_WINDOW_SIZE = 300
 MOVING_WINDOW_SHIFT = 32
-TOTAL_DATA_CHANNELS = 40
+TOTAL_DATA_CHANNELS = 32
 SELECT_DATA_CHANNELS = np.asarray(range(0, 32))
 NUMBER_DATA_CHANNELS = SELECT_DATA_CHANNELS.shape[0]  # Selects first int in shape
 LEARNING_RATE = 1e-5  # 'Step size' on n-D optimization plane
@@ -312,14 +312,15 @@ with tf.Session(config=config) as sess:
     x_sample0 = x_val_data[1, :, :]  # Save weights once
     get_activations(h_conv1, x_sample0, input_shape, image_output_folder_name, filename, sum_all=True, save_data=True)
     weights = np.zeros([NUMBER_DATA_CHANNELS])
-    for i in range(0, 500):
+
+    for i in range(0, x_val_data.shape[0]):
         x_sample0 = x_val_data[i, :, :]
         weight_sample = get_activations(h_conv1, x_sample0, input_shape,
                                         image_output_folder_name, filename, sum_all=True, save_data=False)
         for w in range(0, weight_sample.shape[0]):
             weights[w] += weight_sample[w]
     # Take Average:
-    weights = weights/500
+    weights = weights/x_val_data.shape[0]
     print('weights', weights)
     # Read from the tail of the argsort to find the n highest elements:
     weights_sorted = np.argsort(weights)[::-1]  # [:2] select last 2

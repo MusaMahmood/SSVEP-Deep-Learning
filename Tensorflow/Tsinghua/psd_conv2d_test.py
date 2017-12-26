@@ -23,17 +23,18 @@ TIMESTAMP_START = datetime.datetime.fromtimestamp(time.time()).strftime('%Y%m%d_
 VERSION_NUMBER = 'v0.1.2'
 DESCRIPTION_TRAINING_DATA = '_allset_'
 TRAINING_FOLDER_PATH = r'ssvep_benchmark/psd_large_truncated/S1'
+# TRAINING_FOLDER_PATH = r'windowed_256/S1'
 TEST_FOLDER_PATH = r'ssvep_benchmark/psd_large_truncated/S1val'
+# TEST_FOLDER_PATH = r'windowed_256/S1val'
 EXPORT_DIRECTORY = 'model_exports/' + VERSION_NUMBER + '/'
 KEY_X_DATA_DICTIONARY = 'relevant_data'
 KEY_Y_DATA_DICTIONARY = 'Y'
 
 # IMAGE SHAPE/CHARACTERISTICS
 NUMBER_CLASSES = 5
-TOTAL_DATA_CHANNELS = 64
+TOTAL_DATA_CHANNELS = 2
 DATA_WINDOW_SIZE = 92  # TODO: Make sure this is correct.
 SELECT_DATA_CHANNELS = np.asarray(range(1, 65)) - 1
-# SELECT_DATA_CHANNELS = SELECT_DATA_CHANNELS[[28, 29, 30, 31]]
 NUMBER_DATA_CHANNELS = SELECT_DATA_CHANNELS.shape[0]  # Selects first int in shape
 DEFAULT_IMAGE_SHAPE = [NUMBER_DATA_CHANNELS, DATA_WINDOW_SIZE]
 INPUT_IMAGE_SHAPE = [1, NUMBER_DATA_CHANNELS, DATA_WINDOW_SIZE]
@@ -44,38 +45,31 @@ CHECKPOINT_FILE = EXPORT_DIRECTORY + MODEL_NAME + '.ckpt'
 
 # FOR MODEL DESIGN
 if NUMBER_DATA_CHANNELS > 16:
-    NUMBER_STEPS = 2500
+    NUMBER_STEPS = 5000
 else:
     NUMBER_STEPS = 10000
 
-TRAIN_BATCH_SIZE = 64
-TEST_BATCH_SIZE = 32
-LEARNING_RATE = 1e-5  # 'Step size' on n-D optimization plane
-CONV_ROW = 2
-CONV_COLN = 2
-STRIDE_CONV2D = [1, CONV_ROW, CONV_COLN, 1]
+TRAIN_BATCH_SIZE = 128
+TEST_BATCH_SIZE = 64
+
+LEARNING_RATE = 5e-5  # 'Step size' on n-D optimization plane
+
+STRIDE_CONV2D = [1, 1, 1, 1]
+
 MAX_POOL_K_SIZE = [1, 2, 2, 1]
 MAX_POOL_STRIDE = [1, 2, 2, 1]
 
-BIAS_VAR_CL1 = 128
-BIAS_VAR_CL2 = 64
+BIAS_VAR_CL1 = 64
+BIAS_VAR_CL2 = 128
 
-if NUMBER_DATA_CHANNELS > 2:
-    DIVIDER = 2
-else:
-    DIVIDER = 1
+WEIGHT_VAR_CL1 = [5, 2, 1, BIAS_VAR_CL1]
+WEIGHT_VAR_CL2 = [5, 2, BIAS_VAR_CL1, BIAS_VAR_CL2]
 
-WEIGHT_VAR_CL1 = [1, NUMBER_DATA_CHANNELS, 1, BIAS_VAR_CL1]
-WEIGHT_VAR_CL2 = [1, NUMBER_DATA_CHANNELS, BIAS_VAR_CL1, BIAS_VAR_CL2]
-if (DATA_WINDOW_SIZE//4) % 2 == 0:  # if even:
-    FLAT_SHAPE = NUMBER_DATA_CHANNELS//4//(2*CONV_ROW) * (DATA_WINDOW_SIZE//4)//(2*CONV_COLN) * BIAS_VAR_CL2
-else:
-    FLAT_SHAPE = NUMBER_DATA_CHANNELS//4//(2*CONV_ROW) * (DATA_WINDOW_SIZE//4+1) // (2 * CONV_COLN) * BIAS_VAR_CL2
-
+FLAT_SHAPE = NUMBER_DATA_CHANNELS//4 * DATA_WINDOW_SIZE//4 * BIAS_VAR_CL2
 
 MAX_POOL_FLAT_SHAPE_FC1 = [-1, FLAT_SHAPE]
 
-BIAS_VAR_FC1 = [FLAT_SHAPE]
+BIAS_VAR_FC1 = [1024]
 
 WEIGHT_VAR_FC1 = [FLAT_SHAPE, *BIAS_VAR_FC1]
 
@@ -188,6 +182,7 @@ W_conv2 = weight_variable(WEIGHT_VAR_CL2)
 b_conv2 = bias_variable([BIAS_VAR_CL2])
 
 h_conv2 = tf.nn.relu(conv2d(h_pool1, W_conv2) + b_conv2)
+
 h_pool2 = max_pool_2x2(h_conv2)
 
 # the input should be shaped/flattened
@@ -199,13 +194,13 @@ b_fc1 = bias_variable(BIAS_VAR_FC1)
 
 h_fc1 = tf.nn.relu(tf.matmul(h_pool2_flat, W_fc1) + b_fc1)
 
-h_fc2_drop = tf.nn.dropout(h_fc1, keep_prob)
+h_fc1_drop = tf.nn.dropout(h_fc1, keep_prob)
 
 # weight and bias of the output layer
 W_fco = weight_variable(WEIGHT_VAR_FC_OUTPUT)
 b_fco = bias_variable(BIAS_VAR_FC_OUTPUT)
 
-y_conv = tf.matmul(h_fc2_drop, W_fco) + b_fco
+y_conv = tf.matmul(h_fc1_drop, W_fco) + b_fco
 outputs = tf.nn.softmax(y_conv, name=output_node_name)
 
 # training and reducing the cost/loss function
@@ -223,8 +218,8 @@ saver = tf.train.Saver()  # Initialize tf Saver
 x_data, y_data = load_data(TRAINING_FOLDER_PATH)
 x_val_data, y_val_data = load_data(TEST_FOLDER_PATH)
 # Split training set:
-x_train, x_test_ignore, y_train, y_test_ignore = train_test_split(x_data, y_data, train_size=0.75, random_state=1)
-x_test, x_val_data, y_test, y_val_data = train_test_split(x_val_data, y_val_data, train_size=0.50, random_state=1)
+x_train, x_test, y_train, y_test = train_test_split(x_data, y_data, train_size=0.75, random_state=1)
+x_test, x_ignore, y_test, y_ignore = train_test_split(x_val_data, y_val_data, train_size=0.50, random_state=1)
 
 print("samples: train batch: ", x_train.shape)
 print("samples: test batch: ", x_test.shape)
@@ -250,7 +245,7 @@ with tf.Session(config=config) as sess:
     print("h_pool2: ", sess.run(h_pool2, feed_dict={x: x_0, keep_prob: 1.0}).shape)
     print("h_pool2_flat: ", sess.run(h_pool2_flat, feed_dict={x: x_0, keep_prob: 1.0}).shape)
     print("h_fc1: ", sess.run(h_fc1, feed_dict={x: x_0, keep_prob: 1.0}).shape)
-    print("h_fc2_drop: ", sess.run(h_fc2_drop, feed_dict={x: x_0, keep_prob: 1.0}).shape)
+    print("h_fc1_drop: ", sess.run(h_fc1_drop, feed_dict={x: x_0, keep_prob: 1.0}).shape)
     print("y_conv: ", sess.run(y_conv, feed_dict={x: x_0, keep_prob: 1.0}).shape)
 
     # save model as pbtxt:
@@ -273,7 +268,7 @@ with tf.Session(config=config) as sess:
             print("Validation step %d, validation accuracy %g" % (val_step, val_accuracy))
             val_step += 1
 
-        train_step.run(feed_dict={x: batch_x_train, y: batch_y_train, keep_prob: 0.30})
+        train_step.run(feed_dict={x: batch_x_train, y: batch_y_train, keep_prob: 0.45})
 
     # Run test data (entire set) to see accuracy.
     test_accuracy = sess.run(accuracy, feed_dict={x: x_test, y: y_test, keep_prob: 1.0})  # original

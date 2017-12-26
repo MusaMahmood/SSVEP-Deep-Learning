@@ -35,8 +35,8 @@ DATA_WINDOW_SIZE = 200  # TODO: Make sure this is correct.
 SELECT_DATA_CHANNELS = np.asarray(range(33, 65)) - 1
 SELECT_DATA_CHANNELS = SELECT_DATA_CHANNELS[[28, 29, 30, 31]]
 NUMBER_DATA_CHANNELS = SELECT_DATA_CHANNELS.shape[0]  # Selects first int in shape
-DEFAULT_IMAGE_SHAPE = [NUMBER_DATA_CHANNELS, DATA_WINDOW_SIZE]
-INPUT_IMAGE_SHAPE = [1, NUMBER_DATA_CHANNELS, DATA_WINDOW_SIZE]
+DEFAULT_IMAGE_SHAPE = [DATA_WINDOW_SIZE, NUMBER_DATA_CHANNELS]
+INPUT_IMAGE_SHAPE = [1, DATA_WINDOW_SIZE, NUMBER_DATA_CHANNELS]
 
 # MODEL CKPT SAVES:
 MODEL_NAME = 'ssvep_net_' + str(NUMBER_DATA_CHANNELS) + 'ch'
@@ -242,7 +242,7 @@ with tf.Session(config=config) as sess:
     print("h_pool2: ", sess.run(h_pool2, feed_dict={x: x_0, keep_prob: 1.0}).shape)
     print("h_pool2_flat: ", sess.run(h_pool2_flat, feed_dict={x: x_0, keep_prob: 1.0}).shape)
     print("h_fc1: ", sess.run(h_fc1, feed_dict={x: x_0, keep_prob: 1.0}).shape)
-    print("h_fc2_drop: ", sess.run(h_fc2_drop, feed_dict={x: x_0, keep_prob: 1.0}).shape)
+    print("h_fc1_drop: ", sess.run(h_fc2_drop, feed_dict={x: x_0, keep_prob: 1.0}).shape)
     print("y_conv: ", sess.run(y_conv, feed_dict={x: x_0, keep_prob: 1.0}).shape)
 
     # save model as pbtxt:

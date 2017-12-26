@@ -21,7 +21,6 @@ from tensorflow.python.tools import optimize_for_inference_lib
 # CONSTANTS:
 TIMESTAMP_START = datetime.datetime.fromtimestamp(time.time()).strftime('%Y%m%d_%H.%M.%S')
 VERSION_NUMBER = 'v0.1.0'
-# DESCRIPTION_TRAINING_DATA = '_h1set_'
 DESCRIPTION_TRAINING_DATA = '_allset_'
 TRAINING_FOLDER_PATH = r'_data/S1copy/a'
 TEST_FOLDER_PATH = r'_data/S1copy/b'
@@ -53,8 +52,7 @@ WEIGHT_VAR_CL2 = [NUMBER_CLASSES, NUMBER_DATA_CHANNELS, BIAS_VAR_CL1, BIAS_VAR_C
 WEIGHT_VAR_FC1 = [(DATA_WINDOW_SIZE // 4) * NUMBER_DATA_CHANNELS * BIAS_VAR_CL2, BIAS_VAR_CL1 ** 2]
 MAX_POOL_FLAT_SHAPE_FC1 = [-1, NUMBER_DATA_CHANNELS * (DATA_WINDOW_SIZE // 4) * BIAS_VAR_CL2]
 BIAS_VAR_FC1 = [(BIAS_VAR_CL1 ** 2)]
-# BIAS_VAR_FC2 = [(BIAS_VAR_CL1 ** 2) * 2]
-# WEIGHT_VAR_FC2 = [*BIAS_VAR_FC1, *BIAS_VAR_FC2]
+
 WEIGHT_VAR_FC_OUTPUT = [*BIAS_VAR_FC1, NUMBER_CLASSES]
 BIAS_VAR_FC_OUTPUT = [NUMBER_CLASSES]
 
@@ -185,11 +183,6 @@ b_fc1 = bias_variable(BIAS_VAR_FC1)
 h_pool2_flat = tf.reshape(h_pool2, MAX_POOL_FLAT_SHAPE_FC1)
 h_fc1 = tf.nn.relu(tf.matmul(h_pool2_flat, W_fc1) + b_fc1)
 
-# NOTE: REMOVED fully connected layer2
-# W_fc2 = weight_variable(WEIGHT_VAR_FC2)
-# b_fc2 = bias_variable(BIAS_VAR_FC2)
-# h_fc2 = tf.nn.relu(tf.matmul(h_fc1, W_fc2) + b_fc2)
-
 h_fc2_drop = tf.nn.dropout(h_fc1, keep_prob)
 
 # weight and bias of the output layer
@@ -238,7 +231,7 @@ with tf.Session(config=config) as sess:
     print("h_pool2: ", sess.run(h_pool2, feed_dict={x: x_0, keep_prob: 1.0}).shape)
     print("h_pool2_flat: ", sess.run(h_pool2_flat, feed_dict={x: x_0, keep_prob: 1.0}).shape)
     print("h_fc1: ", sess.run(h_fc1, feed_dict={x: x_0, keep_prob: 1.0}).shape)
-    print("h_fc2_drop: ", sess.run(h_fc2_drop, feed_dict={x: x_0, keep_prob: 1.0}).shape)
+    print("h_fc1_drop: ", sess.run(h_fc2_drop, feed_dict={x: x_0, keep_prob: 1.0}).shape)
     print("y_conv: ", sess.run(y_conv, feed_dict={x: x_0, keep_prob: 1.0}).shape)
 
     for i in range(NUMBER_STEPS):
