@@ -3,7 +3,6 @@
 # TF 1.4.1
 
 # IMPORTS:
-# import matplotlib.pyplot as p
 import tensorflow as tf
 import os.path as path
 import pandas as pd
@@ -21,7 +20,7 @@ from tensorflow.python.tools import optimize_for_inference_lib
 # CONSTANTS:
 TIMESTAMP_START = datetime.datetime.fromtimestamp(time.time()).strftime('%Y%m%d_%H.%M.%S')
 VERSION_NUMBER = 'v0.1.2'
-DESCRIPTION_TRAINING_DATA = '_allset_'
+DESCRIPTION_TRAINING_DATA = '_LAST32CHS_'
 TRAINING_FOLDER_PATH = r'ssvep_benchmark/psd_200p/S1'
 TEST_FOLDER_PATH = r'ssvep_benchmark/psd_200p/S1val'
 EXPORT_DIRECTORY = 'model_exports/' + VERSION_NUMBER + '/'
@@ -32,8 +31,8 @@ KEY_Y_DATA_DICTIONARY = 'Y'
 NUMBER_CLASSES = 5
 TOTAL_DATA_CHANNELS = 64
 DATA_WINDOW_SIZE = 200  # TODO: Make sure this is correct.
-SELECT_DATA_CHANNELS = np.asarray(range(33, 65)) - 1
-SELECT_DATA_CHANNELS = SELECT_DATA_CHANNELS[[28, 29, 30, 31]]
+# SELECT_DATA_CHANNELS = np.asarray(range(0, 32))  # - 1
+SELECT_DATA_CHANNELS = np.asarray(range(32, 64))  # - 1
 NUMBER_DATA_CHANNELS = SELECT_DATA_CHANNELS.shape[0]  # Selects first int in shape
 DEFAULT_IMAGE_SHAPE = [DATA_WINDOW_SIZE, NUMBER_DATA_CHANNELS]
 INPUT_IMAGE_SHAPE = [1, DATA_WINDOW_SIZE, NUMBER_DATA_CHANNELS]
@@ -44,7 +43,7 @@ CHECKPOINT_FILE = EXPORT_DIRECTORY + MODEL_NAME + '.ckpt'
 
 # FOR MODEL DESIGN
 if NUMBER_DATA_CHANNELS > 16:
-    NUMBER_STEPS = 2500
+    NUMBER_STEPS = 5000
 else:
     NUMBER_STEPS = 10000
 
@@ -85,12 +84,15 @@ output_node_name = 'output'
 
 
 def load_data(data_directory):
-    x_train_data = np.empty([0, *[NUMBER_DATA_CHANNELS, DATA_WINDOW_SIZE]], np.float32)
+    # x_train_data = np.empty([0, *[NUMBER_DATA_CHANNELS, DATA_WINDOW_SIZE]], np.float32)
+    x_train_data = np.empty([0, *[DATA_WINDOW_SIZE, NUMBER_DATA_CHANNELS]], np.float32)
     y_train_data = np.empty([0], np.float32)
     training_files = glob.glob(data_directory + "/*.mat")
     for f in training_files:
         x_array_original = loadmat(f).get(KEY_X_DATA_DICTIONARY)
         x_array = x_array_original[:, SELECT_DATA_CHANNELS, :]
+        # TODO: TEMP LINE:
+        x_array = np.reshape(x_array, [x_array.shape[0], DATA_WINDOW_SIZE, NUMBER_DATA_CHANNELS])
         y_array = loadmat(f).get(KEY_Y_DATA_DICTIONARY)
         y_array = y_array.reshape([np.amax(y_array.shape)])
         x_train_data = np.concatenate((x_train_data, x_array), axis=0)
