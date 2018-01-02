@@ -1,34 +1,37 @@
 % % 10s single class files
 clear;clc;close all;
-DIR = 'S2\';
-OUTPUT_DIR = [DIR(1:end-1) '_mat\'];
+DIR = 'S1\'; CLASS_LOC = 8;
+% DIR = 'S2'; CLASS_LOC = 7;
+OUTPUT_DIR = [DIR(1:end-1) '_decimate\'];
 EXT = '.bdf';
 addpath('C:\Users\Musa Mahmood\Dropbox (GaTech)\YeoLab\_SSVEP\_MATLAB-SSVEP-Classification\plugins\Biosig3.3.0\biosig\eeglab');
 x = fileparts( which('sopen') );
 rmpath(x);
 addpath(x,'-begin');
 KEEP_ELECTRODES = 1:40;
-
+[ALLEEG, EEG, CURRENTSET, ALLCOM] = eeglab;
 files = dir([DIR '*' EXT]);
 for f = 1:length(files)
     filename = files(f).name
-    class = filename(7);
-    [ALLEEG, EEG, CURRENTSET, ALLCOM] = eeglab;
+    class = filename(CLASS_LOC);
+    % OLD COMMAND: EEG = pop_readbdf([DIR, filename], [], [], 16); % Oz is reference
 	EEG = pop_biosig([DIR, filename], 'ref', 16);
     [ALLEEG, EEG, CURRENTSET] = pop_newset(ALLEEG, EEG, 0,'gui','off');
-%     EEG = pop_readbdf([DIR, filename], [], [], 16); % Oz is reference
     data = double(EEG.data(KEEP_ELECTRODES, :))'; % Remove EXG electrodes
-    Fs = EEG.srate;
-    [relevant_data, Fs] = dsample(data, Fs);% Downsample % relevant_data = downsample(data, 2);
-    relevant_data(:, end+1) = str2double(class);
+    Fs = EEG.srate; Fs2 = Fs/2;
+%     [relevant_data, Fs] = dsample(data, Fs);% Downsample
     % ADD CLASS TO END:
     for i = KEEP_ELECTRODES
+        relevant_data(:, i) = decimate(data(:, i), 2); 
         ch_labels{i} = EEG.chanlocs(i).labels;
-%         [P(i, :), F] = welch_psd(rescale_minmax(relevant_data(:,i)), Fs, hann(Fs*4));
+%         [P2(i, :), F2] = welch_psd(rescale_minmax(data(end/2+1:end,i)), 512, hann(512 * 4));
+%         [P(i, :), F] = welch_psd(rescale_minmax(relevant_data(end/2+1:end,i)), Fs2, hann(Fs2 * 4));    
     end
+    relevant_data(:, end+1) = str2double(class);
+%     figure(9); plot(F, P); xlim([5 45]);
+%     figure(10); plot(F2, P2); xlim([5 45]);
 %     figure(2); imagesc(KEEP_ELECTRODES, F(51:end), (P(:,51:end))');ylim([0 40]); set(gca,'YDir','normal'); xlabel('Ch, #');ylabel('Frequency, Hz'); colormap(jet); cb = colorbar; ylabel(cb, 'Power (db)')
-%     figure(3); plot(F, P); xlim([6 45]); input('Continue: \n'); commandwindow;
-    fname_new = [OUTPUT_DIR, filename(1:end-4), '_RAW_downsampled.mat'];
+    fname_new = [OUTPUT_DIR, filename(1:end-4), '.mat'];
     mkdir(OUTPUT_DIR);
     save(fname_new, 'ch_labels', 'Fs', 'relevant_data');
     clear relevant_data;
