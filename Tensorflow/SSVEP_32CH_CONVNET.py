@@ -18,14 +18,15 @@ from sklearn import preprocessing
 from sklearn.model_selection import train_test_split
 from tensorflow.python.tools import freeze_graph
 from tensorflow.python.tools import optimize_for_inference_lib
+from math import floor
 
 # CONSTANTS:
 TIMESTAMP_START = datetime.datetime.fromtimestamp(time.time()).strftime('%Y%m%d_%H.%M.%S')
 print("TIMESTAMP_START ", TIMESTAMP_START)
 VERSION_NUMBER = 'v0.1.2'
 DESCRIPTION_TRAINING_DATA = '_allset_'
-TRAINING_FOLDER_PATH = r'_data/_32ch/S2_ds'
-TEST_FOLDER_PATH = r'_data/_32ch/val'
+TRAINING_FOLDER_PATH = r'_data/_32ch/S2_decimate'
+TEST_FOLDER_PATH = r'_data/_32ch/S2_decimate/val'
 EXPORT_DIRECTORY = 'model_exports/' + VERSION_NUMBER + '/'
 MODEL_NAME = 'ssvep_net_32ch'
 CHECKPOINT_FILE = EXPORT_DIRECTORY + MODEL_NAME + '.ckpt'
@@ -91,9 +92,11 @@ def separate_data(input_data):
                                        data_window_array[0, TOTAL_DATA_CHANNELS])
         if count_match == shape[1]:
             x_window = data_window_array[:, SELECT_DATA_CHANNELS]
-            mm_scale = preprocessing.MinMaxScaler(feature_range=(0, 1)).fit(x_window)
-            x_window = mm_scale.transform(x_window)
-
+            for ch in x_window.shape[1]:
+                sample_reshaped = x_window[:, ch].reshape(-1, 1)
+                mm_scale = preprocessing.MinMaxScaler(feature_range=(0, 1)).fit(sample_reshaped)
+                sample_transformed = mm_scale.transform(sample_reshaped)
+                x_window[:, ch] = sample_transformed.flatten()
             x_list.append(x_window)
             y_list.append(data_window_array[0, TOTAL_DATA_CHANNELS])
 
@@ -235,10 +238,10 @@ saver = tf.train.Saver()  # Initialize tf Saver
 
 # Load Data:
 x_data, y_data = load_data(TRAINING_FOLDER_PATH)
-# x_val_data, y_val_data = load_data(TEST_FOLDER_PATH)
+x_val_data, y_val_data = load_data(TEST_FOLDER_PATH)
 # Split training set:
 x_train, x_test, y_train, y_test = train_test_split(x_data, y_data, train_size=0.75, random_state=1)
-x_test, x_val_data, y_test, y_val_data = train_test_split(x_test, y_test, train_size=0.50, random_state=1)
+# x_test, x_val_data, y_test, y_val_data = train_test_split(x_test, y_test, train_size=0.50, random_state=1)
 
 print("samples: train batch: ", x_train.shape)
 print("samples: test batch: ", x_test.shape)
@@ -289,9 +292,15 @@ with tf.Session(config=config) as sess:
     test_accuracy = sess.run(accuracy, feed_dict={x: x_test[0:128], y: y_test[0:128], keep_prob: 1.0})  # original
     print("\n Testing Accuracy:", test_accuracy, "\n\n")
 
-    # Holdout Validation Accuracy:
     print("Holdout Validation:", sess.run(accuracy, feed_dict={x: x_val_data[0:128], y: y_val_data[0:128],
                                                                keep_prob: 1.0}))
+    # Holdout Validation Accuracy:
+    for i in range(0, int(floor(x_val_data.shape[0]/128)-1)):
+        idx_from = i * 128
+        idx_to = (i+1)*128
+        print('idx_from: ', idx_from, ' to: ', idx_to)
+        print("Holdout Validation :", sess.run(accuracy, feed_dict={x: x_val_data[idx_from:idx_to],
+                                                                    y: y_val_data[idx_from:idx_to], keep_prob: 1.0}))
 
     # Comment to space things out:
     # Experimental Stuff:
