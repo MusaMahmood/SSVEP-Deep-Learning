@@ -92,7 +92,7 @@ def separate_data(input_data):
                                        data_window_array[0, TOTAL_DATA_CHANNELS])
         if count_match == shape[1]:
             x_window = data_window_array[:, SELECT_DATA_CHANNELS]
-            for ch in x_window.shape[1]:
+            for ch in range(0, x_window.shape[1]):
                 sample_reshaped = x_window[:, ch].reshape(-1, 1)
                 mm_scale = preprocessing.MinMaxScaler(feature_range=(0, 1)).fit(sample_reshaped)
                 sample_transformed = mm_scale.transform(sample_reshaped)
