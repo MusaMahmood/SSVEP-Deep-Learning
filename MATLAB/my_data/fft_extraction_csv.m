@@ -21,10 +21,10 @@ for f = 1:length(d)
             filtered_window = filtfilt(b, a, selected_window);
             for ch = 1:length(select_chs)
                 P2 = fft(filtered_window(:,ch), wlen);
-                    P2 = abs(P2/wlen);
-                    P1 = P2(1:wlen/2+1);
-                    P1(2:end-1) = 2*P1(2:end-1);
-                    P(w, ch, :) = P1(1:end-1);
+                P2 = abs(P2/wlen);
+                P1 = P2(1:wlen/2+1);
+                P1(2:end-1) = 2*P1(2:end-1);
+                P(w, ch, :) = P1(1:end-1);
             end
             relevant_data(w, :, :) = rescale_minmax(P(w, :, :));
             if (PLOT)
