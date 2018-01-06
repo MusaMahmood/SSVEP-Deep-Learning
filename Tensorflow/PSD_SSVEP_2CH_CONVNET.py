@@ -22,8 +22,8 @@ from tensorflow.python.tools import optimize_for_inference_lib
 TIMESTAMP_START = datetime.datetime.fromtimestamp(time.time()).strftime('%Y%m%d_%H.%M.%S')
 VERSION_NUMBER = 'v0.1.2'
 DESCRIPTION_TRAINING_DATA = '_allset_'
-TRAINING_FOLDER_PATH = r'_data/my_data/S1_psd'
-TEST_FOLDER_PATH = r'_data/my_data/S1_psd_val'
+TRAINING_FOLDER_PATH = r'_data/my_data/S0_psd_256'
+TEST_FOLDER_PATH = TRAINING_FOLDER_PATH + '/v'
 EXPORT_DIRECTORY = 'model_exports/' + VERSION_NUMBER + '/'
 MODEL_NAME = 'ssvep_net_8ch'
 CHECKPOINT_FILE = EXPORT_DIRECTORY + MODEL_NAME + '.ckpt'
@@ -36,14 +36,13 @@ TOTAL_DATA_CHANNELS = 2
 DATA_WINDOW_SIZE = 128
 DEFAULT_IMAGE_SHAPE = [TOTAL_DATA_CHANNELS, DATA_WINDOW_SIZE]
 INPUT_IMAGE_SHAPE = [1, TOTAL_DATA_CHANNELS, DATA_WINDOW_SIZE]
-MOVING_WINDOW_SHIFT = 16
 SELECT_DATA_CHANNELS = np.asarray(range(1, 3))
 NUMBER_DATA_CHANNELS = SELECT_DATA_CHANNELS.shape[0]  # Selects first int in shape
 
 # FOR MODEL DESIGN
-NUMBER_STEPS = 5000
+NUMBER_STEPS = 20000
 TRAIN_BATCH_SIZE = 256
-TEST_BATCH_SIZE = 64
+TEST_BATCH_SIZE = 100
 LEARNING_RATE = 1e-5  # 'Step size' on n-D optimization plane
 STRIDE_CONV2D = [1, 1, 1, 1]
 MAX_POOL_K_SIZE = [1, 2, 1, 1]
@@ -254,23 +253,25 @@ with tf.Session(config=config) as sess:
     print("\n Testing Accuracy:", test_accuracy, "\n\n")
 
     # Holdout Validation Accuracy:
-    print("Holdout Validation:", sess.run(accuracy, feed_dict={x: x_val_data[0:128], y: y_val_data[0:128],
+    print("Holdout Validation:", sess.run(accuracy, feed_dict={x: x_val_data, y: y_val_data,
                                                                keep_prob: 1.0}))
+
     # Get one sample and see what it outputs (Activations?) ?
     image_output_folder_name = EXPORT_DIRECTORY + DESCRIPTION_TRAINING_DATA + TIMESTAMP_START + '/' + 'h_conv1/'
     filename = 'sum_h_conv1'
-    user_input = input('Extract & Analyze Maps?')
-    if user_input == "1" or user_input.lower() == "y":
-        x_sample0 = x_val_data[1, :, :]
-        weights = get_activations(h_conv1, x_sample0, INPUT_IMAGE_SHAPE, image_output_folder_name,
-                                  filename, sum_all=True)
-        print('weights', weights)
-        # Read from the tail of the arg-sort to find the n highest elements:
-        weights_sorted = np.argsort(weights)[::-1]  # [:2] select last 2
-        print('weights_sorted: ', weights_sorted)
-        # TODO: Retrain with selected weights (4, then 2):
 
-user_input = input('Export Current Model?')
-if user_input == "1" or user_input.lower() == "y":
-    saver.save(sess, CHECKPOINT_FILE)
-    export_model([input_node_name, keep_prob_node_name], output_node_name)
+    # user_input = input('Extract & Analyze Maps?')
+    # if user_input == "1" or user_input.lower() == "y":
+    x_sample0 = x_val_data[1, :, :]
+    weights = get_activations(h_conv1, x_sample0, INPUT_IMAGE_SHAPE, image_output_folder_name,
+                              filename, sum_all=True)
+    print('weights', weights)
+    # Read from the tail of the arg-sort to find the n highest elements:
+    weights_sorted = np.argsort(weights)[::-1]  # [:2] select last 2
+    print('weights_sorted: ', weights_sorted)
+    # TODO: Retrain with selected weights (4, then 2):
+
+# user_input = input('Export Current Model?')
+# if user_input == "1" or user_input.lower() == "y":
+#     saver.save(sess, CHECKPOINT_FILE)
+#     export_model([input_node_name, keep_prob_node_name], output_node_name)
