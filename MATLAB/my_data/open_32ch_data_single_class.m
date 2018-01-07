@@ -1,7 +1,7 @@
 % % 10s single class files
 clear;clc;close all;
 DIR = 'S1\'; CLASS_LOC = 8;
-% DIR = 'S2'; CLASS_LOC = 7;
+% DIR = 'S2\'; CLASS_LOC = 7;
 OUTPUT_DIR = [DIR(1:end-1) '_decimate\'];
 EXT = '.bdf';
 addpath('C:\Users\Musa Mahmood\Dropbox (GaTech)\YeoLab\_SSVEP\_MATLAB-SSVEP-Classification\plugins\Biosig3.3.0\biosig\eeglab');
