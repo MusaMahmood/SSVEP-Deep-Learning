@@ -3,7 +3,6 @@
 # TF 1.4.1
 
 # IMPORTS:
-# import matplotlib.pyplot as p
 import tensorflow as tf
 import os.path as path
 import pandas as pd
@@ -20,20 +19,22 @@ from tensorflow.python.tools import optimize_for_inference_lib
 
 # CONSTANTS:
 TIMESTAMP_START = datetime.datetime.fromtimestamp(time.time()).strftime('%Y%m%d_%H.%M.%S')
-VERSION_NUMBER = 'v0.1.2'
+VERSION_NUMBER = 'v0.2.0'
 DESCRIPTION_TRAINING_DATA = '_allset_'
-TRAINING_FOLDER_PATH = r'_data/my_data/S0_psd_256'
+TRAINING_FOLDER_PATH = r'_data/my_data/S1_2_psd_512'
 TEST_FOLDER_PATH = TRAINING_FOLDER_PATH + '/v'
 EXPORT_DIRECTORY = 'model_exports/' + VERSION_NUMBER + '/'
 MODEL_NAME = 'ssvep_net_8ch'
 CHECKPOINT_FILE = EXPORT_DIRECTORY + MODEL_NAME + '.ckpt'
+
+# MATLAB DICT KEYS
 KEY_X_DATA_DICTIONARY = 'relevant_data'
 KEY_Y_DATA_DICTIONARY = 'Y'
 
 # IMAGE SHAPE/CHARACTERISTICS
+DATA_WINDOW_SIZE = 256
 NUMBER_CLASSES = 5
 TOTAL_DATA_CHANNELS = 2
-DATA_WINDOW_SIZE = 128
 DEFAULT_IMAGE_SHAPE = [TOTAL_DATA_CHANNELS, DATA_WINDOW_SIZE]
 INPUT_IMAGE_SHAPE = [1, TOTAL_DATA_CHANNELS, DATA_WINDOW_SIZE]
 SELECT_DATA_CHANNELS = np.asarray(range(1, 3))
@@ -271,7 +272,7 @@ with tf.Session(config=config) as sess:
     print('weights_sorted: ', weights_sorted)
     # TODO: Retrain with selected weights (4, then 2):
 
-# user_input = input('Export Current Model?')
-# if user_input == "1" or user_input.lower() == "y":
-#     saver.save(sess, CHECKPOINT_FILE)
-#     export_model([input_node_name, keep_prob_node_name], output_node_name)
+    user_input = input('Export Current Model?')
+    if user_input == "1" or user_input.lower() == "y":
+        saver.save(sess, CHECKPOINT_FILE)
+        export_model([input_node_name, keep_prob_node_name], output_node_name)
