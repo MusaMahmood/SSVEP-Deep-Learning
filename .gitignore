@@ -18,3 +18,5 @@ DATA/output_csv/
 MATLAB/ssvep_benchmark_dataset/.idea/
 *.bdf
 MATLAB/preprocess_fcns/codegen/
+*.mexw64
+*.prj

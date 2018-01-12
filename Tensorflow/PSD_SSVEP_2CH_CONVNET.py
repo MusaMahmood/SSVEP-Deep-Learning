@@ -12,7 +12,7 @@ import datetime
 import glob
 import time
 
-from scipy.io import loadmat
+from scipy.io import loadmat, savemat
 from sklearn.model_selection import train_test_split
 from tensorflow.python.tools import freeze_graph
 from tensorflow.python.tools import optimize_for_inference_lib
@@ -20,8 +20,8 @@ from tensorflow.python.tools import optimize_for_inference_lib
 # CONSTANTS:
 TIMESTAMP_START = datetime.datetime.fromtimestamp(time.time()).strftime('%Y%m%d_%H.%M.%S')
 VERSION_NUMBER = 'v0.2.0'
-DESCRIPTION_TRAINING_DATA = '_allset_'
-TRAINING_FOLDER_PATH = r'_data/my_data/S1_2_psd_512'
+TRAINING_FOLDER_PATH = r'_data/my_data/S1_2_psd_256'
+DESCRIPTION_TRAINING_DATA = 'PSD_S1_S2'
 TEST_FOLDER_PATH = TRAINING_FOLDER_PATH + '/v'
 EXPORT_DIRECTORY = 'model_exports/' + VERSION_NUMBER + '/'
 MODEL_NAME = 'ssvep_net_8ch'
@@ -32,7 +32,7 @@ KEY_X_DATA_DICTIONARY = 'relevant_data'
 KEY_Y_DATA_DICTIONARY = 'Y'
 
 # IMAGE SHAPE/CHARACTERISTICS
-DATA_WINDOW_SIZE = 256
+DATA_WINDOW_SIZE = 128
 NUMBER_CLASSES = 5
 TOTAL_DATA_CHANNELS = 2
 DEFAULT_IMAGE_SHAPE = [TOTAL_DATA_CHANNELS, DATA_WINDOW_SIZE]
@@ -47,7 +47,7 @@ TEST_BATCH_SIZE = 100
 LEARNING_RATE = 1e-5  # 'Step size' on n-D optimization plane
 STRIDE_CONV2D = [1, 1, 1, 1]
 MAX_POOL_K_SIZE = [1, 2, 1, 1]
-MAX_POOL_STRIDE = [1, 2, 1, 1]
+MAX_POOL_STRIDE = [1, 2, 1, 1]  # May need to reduce batch size for this.
 
 BIAS_VAR_CL1 = 32
 BIAS_VAR_CL2 = 64
@@ -66,9 +66,8 @@ WEIGHT_VAR_FC_OUTPUT = [*BIAS_VAR_FC1, NUMBER_CLASSES]
 BIAS_VAR_FC_OUTPUT = [NUMBER_CLASSES]
 
 # Start Script Here:
-output_folder_name = 'exports'
-if not path.exists(output_folder_name):
-    os.mkdir(output_folder_name)
+if not path.exists(EXPORT_DIRECTORY):
+    os.mkdir(EXPORT_DIRECTORY)
 input_node_name = 'input'
 keep_prob_node_name = 'keep_prob'
 output_node_name = 'output'
@@ -124,8 +123,7 @@ def conv2d(x_, weights_):
 
 
 def max_pool_2x2(x_):
-    return tf.nn.max_pool(x_, ksize=MAX_POOL_K_SIZE,
-                          strides=MAX_POOL_STRIDE, padding='SAME')
+    return tf.nn.max_pool(x_, ksize=MAX_POOL_K_SIZE, strides=MAX_POOL_STRIDE, padding='SAME')
 
 
 def get_activations(layer, input_val, shape, directory, file_name, sum_all=False):
@@ -149,6 +147,15 @@ def get_activations(layer, input_val, shape, directory, file_name, sum_all=False
             pd.DataFrame(units[:, :, :, i0].reshape(new_shape)).to_csv(
                 filename_ + '_' + str(i0 + 1) + '.csv', index=False, header=False)
         return units
+
+
+def get_activations_mat(layer, input_val, shape):
+    units = sess.run(layer, feed_dict={x: np.reshape(input_val, shape, order='F'), keep_prob: 1.0})
+    print("units.shape: ", units.shape)
+    # os.makedirs(directory)
+    # fn_out = directory + filename_mat + '.mat'
+    # savemat(fn_out, mdict={'units_' + filename_mat: units})
+    return units
 
 
 # MODEL INPUT #
@@ -181,13 +188,13 @@ b_fc1 = bias_variable(BIAS_VAR_FC1)
 
 h_fc1 = tf.nn.relu(tf.matmul(h_pool2_flat, W_fc1) + b_fc1)
 
-h_fc2_drop = tf.nn.dropout(h_fc1, keep_prob)
+h_fc1_drop = tf.nn.dropout(h_fc1, keep_prob)
 
 # weight and bias of the output layer
 W_fco = weight_variable(WEIGHT_VAR_FC_OUTPUT)
 b_fco = bias_variable(BIAS_VAR_FC_OUTPUT)
 
-y_conv = tf.matmul(h_fc2_drop, W_fco) + b_fco
+y_conv = tf.matmul(h_fc1_drop, W_fco) + b_fco
 outputs = tf.nn.softmax(y_conv, name=output_node_name)
 
 # training and reducing the cost/loss function
@@ -224,7 +231,7 @@ with tf.Session(config=config) as sess:
     print("h_pool2: ", sess.run(h_pool2, feed_dict={x: x_0, keep_prob: 1.0}).shape)
     print("h_pool2_flat: ", sess.run(h_pool2_flat, feed_dict={x: x_0, keep_prob: 1.0}).shape)
     print("h_fc1: ", sess.run(h_fc1, feed_dict={x: x_0, keep_prob: 1.0}).shape)
-    print("h_fc1_drop: ", sess.run(h_fc2_drop, feed_dict={x: x_0, keep_prob: 1.0}).shape)
+    print("h_fc1_drop: ", sess.run(h_fc1_drop, feed_dict={x: x_0, keep_prob: 1.0}).shape)
     print("y_conv: ", sess.run(y_conv, feed_dict={x: x_0, keep_prob: 1.0}).shape)
 
     # save model as pbtxt:
@@ -258,14 +265,28 @@ with tf.Session(config=config) as sess:
                                                                keep_prob: 1.0}))
 
     # Get one sample and see what it outputs (Activations?) ?
-    image_output_folder_name = EXPORT_DIRECTORY + DESCRIPTION_TRAINING_DATA + TIMESTAMP_START + '/' + 'h_conv1/'
-    filename = 'sum_h_conv1'
-
+    image_output_folder_name = EXPORT_DIRECTORY + DESCRIPTION_TRAINING_DATA + TIMESTAMP_START + '/'
+    feature_map_folder_name = EXPORT_DIRECTORY + 'feature_maps' + TIMESTAMP_START + '/'
     # user_input = input('Extract & Analyze Maps?')
     # if user_input == "1" or user_input.lower() == "y":
-    x_sample0 = x_val_data[1, :, :]
-    weights = get_activations(h_conv1, x_sample0, INPUT_IMAGE_SHAPE, image_output_folder_name,
+    filename = 'sum_h_conv1'
+    x_sample0 = x_val_data[0, :, :]
+    weights = get_activations(h_conv1, x_sample0, INPUT_IMAGE_SHAPE, image_output_folder_name + 'h_conv1/',
                               filename, sum_all=True)
+    # Extract weights of following layers
+    w_hconv1 = get_activations_mat(h_conv1, x_sample0, INPUT_IMAGE_SHAPE)
+    w_hpool1 = get_activations_mat(h_pool1, x_sample0, INPUT_IMAGE_SHAPE)
+    w_hconv2 = get_activations_mat(h_conv2, x_sample0, INPUT_IMAGE_SHAPE)
+    w_hpool2 = get_activations_mat(h_pool2, x_sample0, INPUT_IMAGE_SHAPE)
+    w_hpool2_flat = get_activations_mat(h_pool2_flat, x_sample0, INPUT_IMAGE_SHAPE)
+    w_hfc1 = get_activations_mat(h_fc1, x_sample0, INPUT_IMAGE_SHAPE)
+    w_hfc1_do = get_activations_mat(h_fc1_drop, x_sample0, INPUT_IMAGE_SHAPE)
+    w_y_out = get_activations_mat(y_conv, x_sample0, INPUT_IMAGE_SHAPE)
+    # Save all activations:
+    fn_out = feature_map_folder_name + 'all_activations.mat'
+    savemat(fn_out, mdict={'input_sample': x_sample0, 'h_conv1': w_hconv1, 'h_pool1': w_hpool1, 'h_conv2': w_hconv2, 'h_pool2': w_hpool2,
+                           'h_pool2_flat': w_hpool2_flat, 'h_fc1': w_hfc1, 'h_fc1_drop': w_hfc1_do, 'y_out': w_y_out})
+
     print('weights', weights)
     # Read from the tail of the arg-sort to find the n highest elements:
     weights_sorted = np.argsort(weights)[::-1]  # [:2] select last 2
