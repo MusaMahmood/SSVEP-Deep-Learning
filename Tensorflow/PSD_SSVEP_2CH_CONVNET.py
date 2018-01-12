@@ -151,11 +151,37 @@ def get_activations(layer, input_val, shape, directory, file_name, sum_all=False
 
 def get_activations_mat(layer, input_val, shape):
     units = sess.run(layer, feed_dict={x: np.reshape(input_val, shape, order='F'), keep_prob: 1.0})
-    print("units.shape: ", units.shape)
-    # os.makedirs(directory)
-    # fn_out = directory + filename_mat + '.mat'
-    # savemat(fn_out, mdict={'units_' + filename_mat: units})
+    # print("units.shape: ", units.shape)
     return units
+
+
+def get_all_activations(training_data, folder_name):
+    w_hconv1 = np.empty([0, *h_conv1_shape[1:]], np.float32)
+    w_hpool1 = np.empty([0, *h_pool1_shape[1:]], np.float32)
+    w_hconv2 = np.empty([0, *h_conv2_shape[1:]], np.float32)
+    w_hpool2 = np.empty([0, *h_pool2_shape[1:]], np.float32)
+    w_hpool2_flat = np.empty([0, h_pool2_flat_shape[1]], np.float32)
+    w_hfc1 = np.empty([0, h_fc1_shape[1]], np.float32)
+    w_hfc1_do = np.empty([0, h_fc1_drop_shape[1]], np.float32)
+    w_y_out = np.empty([0, y_conv_shape[1]], np.float32)
+    print('Getting all Activations: please wait... ')
+    for it in range(0, training_data.shape[0]):
+        sample = training_data[it]
+        w_hconv1 = np.concatenate((w_hconv1, get_activations_mat(h_conv1, sample, INPUT_IMAGE_SHAPE)), axis=0)
+        w_hpool1 = np.concatenate((w_hpool1, get_activations_mat(h_pool1, sample, INPUT_IMAGE_SHAPE)), axis=0)
+        w_hconv2 = np.concatenate((w_hconv2, get_activations_mat(h_conv2, sample, INPUT_IMAGE_SHAPE)), axis=0)
+        w_hpool2 = np.concatenate((w_hpool2, get_activations_mat(h_pool2, sample, INPUT_IMAGE_SHAPE)), axis=0)
+        w_hpool2_flat = np.concatenate((w_hpool2_flat, get_activations_mat(h_pool2_flat, sample, INPUT_IMAGE_SHAPE)),
+                                       axis=0)
+        w_hfc1 = np.concatenate((w_hfc1, get_activations_mat(h_fc1, sample, INPUT_IMAGE_SHAPE)), axis=0)
+        w_hfc1_do = np.concatenate((w_hfc1_do, get_activations_mat(h_fc1_drop, sample, INPUT_IMAGE_SHAPE)), axis=0)
+        w_y_out = np.concatenate((w_y_out, get_activations_mat(y_conv, sample, INPUT_IMAGE_SHAPE)), axis=0)
+        # Save all activations:
+    fn_out = folder_name + 'all_activations.mat'
+    savemat(fn_out, mdict={'input_sample': training_data, 'h_conv1': w_hconv1, 'h_pool1': w_hpool1, 'h_conv2': w_hconv2,
+                           'h_pool2': w_hpool2,
+                           'h_pool2_flat': w_hpool2_flat, 'h_fc1': w_hfc1, 'h_fc1_drop': w_hfc1_do,
+                           'y_out': w_y_out})
 
 
 # MODEL INPUT #
@@ -225,14 +251,22 @@ with tf.Session(config=config) as sess:
 
     x_0 = np.zeros(INPUT_IMAGE_SHAPE, dtype=np.float32)
     print("Model Dimensions: ")
-    print("h_conv1: ", sess.run(h_conv1, feed_dict={x: x_0, keep_prob: 1.0}).shape)
-    print("h_pool1: ", sess.run(h_pool1, feed_dict={x: x_0, keep_prob: 1.0}).shape)
-    print("h_conv2: ", sess.run(h_conv2, feed_dict={x: x_0, keep_prob: 1.0}).shape)
-    print("h_pool2: ", sess.run(h_pool2, feed_dict={x: x_0, keep_prob: 1.0}).shape)
-    print("h_pool2_flat: ", sess.run(h_pool2_flat, feed_dict={x: x_0, keep_prob: 1.0}).shape)
-    print("h_fc1: ", sess.run(h_fc1, feed_dict={x: x_0, keep_prob: 1.0}).shape)
-    print("h_fc1_drop: ", sess.run(h_fc1_drop, feed_dict={x: x_0, keep_prob: 1.0}).shape)
-    print("y_conv: ", sess.run(y_conv, feed_dict={x: x_0, keep_prob: 1.0}).shape)
+    h_conv1_shape = sess.run(h_conv1, feed_dict={x: x_0, keep_prob: 1.0}).shape
+    h_pool1_shape = sess.run(h_pool1, feed_dict={x: x_0, keep_prob: 1.0}).shape
+    h_conv2_shape = sess.run(h_conv2, feed_dict={x: x_0, keep_prob: 1.0}).shape
+    h_pool2_shape = sess.run(h_pool2, feed_dict={x: x_0, keep_prob: 1.0}).shape
+    h_pool2_flat_shape = sess.run(h_pool2_flat, feed_dict={x: x_0, keep_prob: 1.0}).shape
+    h_fc1_shape = sess.run(h_fc1, feed_dict={x: x_0, keep_prob: 1.0}).shape
+    h_fc1_drop_shape = sess.run(h_fc1_drop, feed_dict={x: x_0, keep_prob: 1.0}).shape
+    y_conv_shape = sess.run(y_conv, feed_dict={x: x_0, keep_prob: 1.0}).shape
+    print("h_conv1: ", h_conv1_shape)
+    print("h_pool1: ", h_pool1_shape)
+    print("h_conv2: ", h_conv2_shape)
+    print("h_pool2: ", h_pool2_shape)
+    print("h_pool2_flat: ", h_pool2_flat_shape)
+    print("h_fc1: ", h_fc1_shape)
+    print("h_fc1_drop: ", h_fc1_drop_shape)
+    print("y_conv: ", y_conv_shape)
 
     # save model as pbtxt:
     tf.train.write_graph(sess.graph_def, EXPORT_DIRECTORY, MODEL_NAME + '.pbtxt', True)
@@ -265,33 +299,22 @@ with tf.Session(config=config) as sess:
                                                                keep_prob: 1.0}))
 
     # Get one sample and see what it outputs (Activations?) ?
-    image_output_folder_name = EXPORT_DIRECTORY + DESCRIPTION_TRAINING_DATA + TIMESTAMP_START + '/'
+    # image_output_folder_name = EXPORT_DIRECTORY + DESCRIPTION_TRAINING_DATA + TIMESTAMP_START + '/'
     feature_map_folder_name = EXPORT_DIRECTORY + 'feature_maps' + TIMESTAMP_START + '/'
+    os.makedirs(feature_map_folder_name)
     # user_input = input('Extract & Analyze Maps?')
     # if user_input == "1" or user_input.lower() == "y":
-    filename = 'sum_h_conv1'
-    x_sample0 = x_val_data[0, :, :]
-    weights = get_activations(h_conv1, x_sample0, INPUT_IMAGE_SHAPE, image_output_folder_name + 'h_conv1/',
-                              filename, sum_all=True)
-    # Extract weights of following layers
-    w_hconv1 = get_activations_mat(h_conv1, x_sample0, INPUT_IMAGE_SHAPE)
-    w_hpool1 = get_activations_mat(h_pool1, x_sample0, INPUT_IMAGE_SHAPE)
-    w_hconv2 = get_activations_mat(h_conv2, x_sample0, INPUT_IMAGE_SHAPE)
-    w_hpool2 = get_activations_mat(h_pool2, x_sample0, INPUT_IMAGE_SHAPE)
-    w_hpool2_flat = get_activations_mat(h_pool2_flat, x_sample0, INPUT_IMAGE_SHAPE)
-    w_hfc1 = get_activations_mat(h_fc1, x_sample0, INPUT_IMAGE_SHAPE)
-    w_hfc1_do = get_activations_mat(h_fc1_drop, x_sample0, INPUT_IMAGE_SHAPE)
-    w_y_out = get_activations_mat(y_conv, x_sample0, INPUT_IMAGE_SHAPE)
-    # Save all activations:
-    fn_out = feature_map_folder_name + 'all_activations.mat'
-    savemat(fn_out, mdict={'input_sample': x_sample0, 'h_conv1': w_hconv1, 'h_pool1': w_hpool1, 'h_conv2': w_hconv2, 'h_pool2': w_hpool2,
-                           'h_pool2_flat': w_hpool2_flat, 'h_fc1': w_hfc1, 'h_fc1_drop': w_hfc1_do, 'y_out': w_y_out})
+    # x_sample0 = x_val_data[0, :, :]
+    # weights = get_activations(h_conv1, x_sample0, INPUT_IMAGE_SHAPE, image_output_folder_name + 'h_conv1/',
+    #                           filename, sum_all=True)
 
-    print('weights', weights)
+    # Extract weights of following layers
+    get_all_activations(x_val_data, feature_map_folder_name)
+
+    # print('weights', weights)
     # Read from the tail of the arg-sort to find the n highest elements:
-    weights_sorted = np.argsort(weights)[::-1]  # [:2] select last 2
-    print('weights_sorted: ', weights_sorted)
-    # TODO: Retrain with selected weights (4, then 2):
+    # weights_sorted = np.argsort(weights)[::-1]  # [:2] select last 2
+    # print('weights_sorted: ', weights_sorted)
 
     user_input = input('Export Current Model?')
     if user_input == "1" or user_input.lower() == "y":
