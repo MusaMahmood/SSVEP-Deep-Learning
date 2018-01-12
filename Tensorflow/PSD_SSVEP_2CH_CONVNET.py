@@ -166,6 +166,8 @@ def get_all_activations(training_data, folder_name):
     w_y_out = np.empty([0, y_conv_shape[1]], np.float32)
     print('Getting all Activations: please wait... ')
     for it in range(0, training_data.shape[0]):
+        if it % 100 == 0:
+            print('Saved Sample #', it)
         sample = training_data[it]
         w_hconv1 = np.concatenate((w_hconv1, get_activations_mat(h_conv1, sample, INPUT_IMAGE_SHAPE)), axis=0)
         w_hpool1 = np.concatenate((w_hpool1, get_activations_mat(h_pool1, sample, INPUT_IMAGE_SHAPE)), axis=0)
@@ -300,7 +302,8 @@ with tf.Session(config=config) as sess:
 
     # Get one sample and see what it outputs (Activations?) ?
     # image_output_folder_name = EXPORT_DIRECTORY + DESCRIPTION_TRAINING_DATA + TIMESTAMP_START + '/'
-    feature_map_folder_name = EXPORT_DIRECTORY + 'feature_maps' + TIMESTAMP_START + '/'
+    feature_map_folder_name = EXPORT_DIRECTORY + 'feature_maps_' + TIMESTAMP_START + '_wlen' + str(DATA_WINDOW_SIZE) \
+                              + '/'
     os.makedirs(feature_map_folder_name)
     # user_input = input('Extract & Analyze Maps?')
     # if user_input == "1" or user_input.lower() == "y":
