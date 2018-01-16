@@ -45,14 +45,19 @@ NUMBER_STEPS = 20000
 TRAIN_BATCH_SIZE = 256
 TEST_BATCH_SIZE = 100
 LEARNING_RATE = 1e-5  # 'Step size' on n-D optimization plane
+
 STRIDE_CONV2D = [1, 1, 1, 1]
-MAX_POOL_K_SIZE = [1, 2, 1, 1]  # Kernel Size
-MAX_POOL_STRIDE = [1, 2, 1, 1]  # Stride (decreases dimension factor - May need to reduce batch size for this.)
+
+MAX_POOL1_K_SIZE = [1, 2, 1, 1]  # Kernel Size
+MAX_POOL1_STRIDE = [1, 2, 1, 1]  # Stride 
+
+MAX_POOL2_K_SIZE = [1, 1, 2, 1]  # Kernel Size
+MAX_POOL2_STRIDE = [1, 1, 2, 1]  # Stride
 
 BIAS_VAR_CL1 = 32  # Number of kernel convolutions in h_conv1
 BIAS_VAR_CL2 = 64  # Number of kernel convolutions in h_conv2
 
-DIVIDER = 2
+DIVIDER = MAX_POOL1_STRIDE[1] * MAX_POOL1_STRIDE[2] + MAX_POOL2_STRIDE[1] * MAX_POOL2_STRIDE[2]
 
 WEIGHT_VAR_CL1 = [1, 1, 1, BIAS_VAR_CL1]  # [5, NUMBER_DATA_CHANNELS, 1, 32]
 WEIGHT_VAR_CL2 = [1, 1, BIAS_VAR_CL1, BIAS_VAR_CL2]  # [5, NUMBER_DATA_CHANNELS, 32, 64]
@@ -123,7 +128,7 @@ def conv2d(x_, weights_):
 
 
 def max_pool_2x2(x_):
-    return tf.nn.max_pool(x_, ksize=MAX_POOL_K_SIZE, strides=MAX_POOL_STRIDE, padding='SAME')
+    return tf.nn.max_pool(x_, ksize=MAX_POOL1_K_SIZE, strides=MAX_POOL1_STRIDE, padding='SAME')
 
 
 def get_activations(layer, input_val, shape, directory, file_name, sum_all=False):
@@ -180,7 +185,8 @@ def get_all_activations(training_data, folder_name):
         w_y_out = np.concatenate((w_y_out, get_activations_mat(y_conv, sample, INPUT_IMAGE_SHAPE)), axis=0)
         # Save all activations:
     fn_out = folder_name + 'all_activations.mat'
-    savemat(fn_out, mdict={'input_sample': training_data, 'h_conv1': w_hconv1, 'h_pool1': w_hpool1, 'h_conv2': w_hconv2,
+    savemat(fn_out, mdict={'input_sample': training_data, 'h_conv1': w_hconv1, 'h_conv2': w_hconv2,
+                           'h_pool1': w_hpool1,
                            'h_pool2': w_hpool2,
                            'h_pool2_flat': w_hpool2_flat, 'h_fc1': w_hfc1, 'h_fc1_drop': w_hfc1_do,
                            'y_out': w_y_out})
@@ -198,14 +204,16 @@ W_conv1 = weight_variable(WEIGHT_VAR_CL1)
 b_conv1 = bias_variable([BIAS_VAR_CL1])
 
 h_conv1 = tf.nn.relu(conv2d(x_input, W_conv1) + b_conv1)
-h_pool1 = max_pool_2x2(h_conv1)
+# h_pool1 = max_pool_2x2(h_conv1)
+h_pool1 = tf.nn.max_pool(h_conv1, MAX_POOL1_K_SIZE, MAX_POOL1_STRIDE, padding='SAME')
 
 # second convolution and pooling
 W_conv2 = weight_variable(WEIGHT_VAR_CL2)
 b_conv2 = bias_variable([BIAS_VAR_CL2])
 
 h_conv2 = tf.nn.relu(conv2d(h_pool1, W_conv2) + b_conv2)
-h_pool2 = max_pool_2x2(h_conv2)
+# h_pool2 = max_pool_2x2(h_conv2)
+h_pool2 = tf.nn.max_pool(h_conv2, MAX_POOL2_K_SIZE, MAX_POOL2_STRIDE, padding='SAME')
 
 # the input should be shaped/flattened
 h_pool2_flat = tf.reshape(h_pool2, MAX_POOL_FLAT_SHAPE_FC1)
