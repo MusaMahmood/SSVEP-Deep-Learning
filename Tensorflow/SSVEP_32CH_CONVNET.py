@@ -25,40 +25,42 @@ TIMESTAMP_START = datetime.datetime.fromtimestamp(time.time()).strftime('%Y%m%d_
 print("TIMESTAMP_START ", TIMESTAMP_START)
 VERSION_NUMBER = 'v0.1.2'
 DESCRIPTION_TRAINING_DATA = '_allset_'
-TRAINING_FOLDER_PATH = r'_data/_32ch/S2_decimate'
-TEST_FOLDER_PATH = r'_data/_32ch/S2_decimate/val'
+TRAINING_FOLDER_PATH = r'_data/my_data_32ch/old/S1_decimate'
+TEST_FOLDER_PATH = TRAINING_FOLDER_PATH + '/v'
 EXPORT_DIRECTORY = 'model_exports/' + VERSION_NUMBER + '/'
 MODEL_NAME = 'ssvep_net_32ch'
 CHECKPOINT_FILE = EXPORT_DIRECTORY + MODEL_NAME + '.ckpt'
 NUMBER_CLASSES = 5
+# TODO: USE PSD NOT THIS!
 KEY_DATA_DICTIONARY = 'relevant_data'
-NUMBER_STEPS = 5000
-TRAIN_BATCH_SIZE = 100
-TEST_BATCH_SIZE = 50
-DATA_WINDOW_SIZE = 300
+NUMBER_STEPS = 10000
+TRAIN_BATCH_SIZE = 256
+TEST_BATCH_SIZE = 128
+DATA_WINDOW_SIZE = 512
 MOVING_WINDOW_SHIFT = 32
 TOTAL_DATA_CHANNELS = 40
 SELECT_DATA_CHANNELS = np.asarray(range(0, 32))
 NUMBER_DATA_CHANNELS = SELECT_DATA_CHANNELS.shape[0]  # Selects first int in shape
 LEARNING_RATE = 1e-5  # 'Step size' on n-D optimization plane
+TRAINING_KEEP_PROB = 0.5
 
 # FOR MODEL DESIGN
 STRIDE_CONV2D = [1, 1, 1, 1]
-MAX_POOL_K_SIZE = [1, 2, 1, 1]
-MAX_POOL_STRIDE = [1, 2, 1, 1]
+MAX_POOL_K_SIZE = [1, 4, 4, 1]
+MAX_POOL_STRIDE = [1, 2, 2, 1]
 
 BIAS_VAR_CL1 = 32
 BIAS_VAR_CL2 = 64
 
 DIVIDER = 4
 
-WEIGHT_VAR_CL1 = [NUMBER_CLASSES, NUMBER_DATA_CHANNELS, 1, BIAS_VAR_CL1]  # [5, NUMBER_DATA_CHANNELS, 1, 32]
-WEIGHT_VAR_CL2 = [NUMBER_CLASSES, NUMBER_DATA_CHANNELS, BIAS_VAR_CL1, BIAS_VAR_CL2]  # [5, NUMBER_DATA_CHANNELS, 32, 64]
+WEIGHT_VAR_CL1 = [4, 4, 1, BIAS_VAR_CL1]  # [5, NUMBER_DATA_CHANNELS, 1, 32]
+WEIGHT_VAR_CL2 = [5, 5, BIAS_VAR_CL1, BIAS_VAR_CL2]  # [5, NUMBER_DATA_CHANNELS, 32, 64]
 
 BIAS_VAR_FC1 = [1024]
 
-WEIGHT_VAR_FC1 = [(DATA_WINDOW_SIZE // DIVIDER) * NUMBER_DATA_CHANNELS * BIAS_VAR_CL2, 1024]
-MAX_POOL_FLAT_SHAPE_FC1 = [-1, NUMBER_DATA_CHANNELS * (DATA_WINDOW_SIZE // DIVIDER) * BIAS_VAR_CL2]
+WEIGHT_VAR_FC1 = [128*8*64, *BIAS_VAR_FC1]
+MAX_POOL_FLAT_SHAPE_FC1 = [-1, WEIGHT_VAR_FC1[0]]
 
 WEIGHT_VAR_FC_OUTPUT = [*BIAS_VAR_FC1, NUMBER_CLASSES]
 
@@ -155,13 +157,21 @@ def conv2d(x_, weights_):
     return tf.nn.conv2d(x_, weights_, strides=STRIDE_CONV2D, padding='SAME')
 
 
+def conv2(x_, w_, b_, stride):
+    x_ = tf.nn.conv2d(x_, w_, strides=stride, padding='SAME')
+    x_ = tf.nn.bias_add(x_, b_)
+    return tf.nn.relu(x_)
+
+
 def max_pool_2x2(x_):
     return tf.nn.max_pool(x_, ksize=MAX_POOL_K_SIZE,
                           strides=MAX_POOL_STRIDE, padding='SAME')
 
 
 def get_activations(layer, input_val, shape, directory, file_name, sum_all=False, save_data=False):
-    os.makedirs(directory, exist_ok=True)
+    if save_data:
+        os.makedirs(directory, exist_ok=True)
+
     units = sess.run(layer, feed_dict={x: np.reshape(input_val, shape, order='F'), keep_prob: 1.0})
 
     # plot_nn_filter(units, directory + file_name, True)
@@ -245,7 +255,7 @@ x_train, x_test, y_train, y_test = train_test_split(x_data, y_data, train_size=0
 
 print("samples: train batch: ", x_train.shape)
 print("samples: test batch: ", x_test.shape)
-print("samples: validation batch: ", x_val_data.shape)
+# print("samples: validation batch: ", x_val_data.shape)
 
 # TRAIN ROUTINE #
 init_op = tf.global_variables_initializer()
@@ -274,8 +284,11 @@ with tf.Session(config=config) as sess:
         batch_x_train = x_train[offset:(offset + TRAIN_BATCH_SIZE)]
         batch_y_train = y_train[offset:(offset + TRAIN_BATCH_SIZE)]
         if i % 10 == 0:
-            train_accuracy = accuracy.eval(feed_dict={x: batch_x_train, y: batch_y_train, keep_prob: 1.0})
-            print("step %d, training accuracy %g" % (i, train_accuracy))
+            # train_accuracy = accuracy.eval(feed_dict={x: batch_x_train, y: batch_y_train, keep_prob: 1.0})
+            loss, train_accuracy = sess.run([cross_entropy, accuracy], feed_dict={x: batch_x_train, y: batch_y_train,
+                                                                                  keep_prob: 1.})
+            # print("step %d, training accuracy %g" % (i, train_accuracy))
+            print("Step", i, "training_accuracy: ", train_accuracy, "mini-batch loss = " + "{:.6f}".format(loss))
 
         if i % 20 == 0:
             # Calculate batch loss and accuracy
@@ -286,7 +299,7 @@ with tf.Session(config=config) as sess:
             print("Validation step %d, validation accuracy %g" % (val_step, val_accuracy))
             val_step += 1
 
-        train_step.run(feed_dict={x: batch_x_train, y: batch_y_train, keep_prob: 0.25})
+        train_step.run(feed_dict={x: batch_x_train, y: batch_y_train, keep_prob: TRAINING_KEEP_PROB})
 
     # Run test data (entire set) to see accuracy.
     test_accuracy = sess.run(accuracy, feed_dict={x: x_test[0:128], y: y_test[0:128], keep_prob: 1.0})  # original
@@ -295,14 +308,52 @@ with tf.Session(config=config) as sess:
     print("Holdout Validation:", sess.run(accuracy, feed_dict={x: x_val_data[0:128], y: y_val_data[0:128],
                                                                keep_prob: 1.0}))
     # Holdout Validation Accuracy:
-    for i in range(0, int(floor(x_val_data.shape[0]/128)-1)):
+    num_val_blocks = int(floor(x_val_data.shape[0] / 128) - 1)
+    accuracy_array = np.zeros(shape=num_val_blocks, dtype=float)
+    for i in range(0, num_val_blocks):
         idx_from = i * 128
-        idx_to = (i+1)*128
-        print('idx_from: ', idx_from, ' to: ', idx_to)
-        print("Holdout Validation :", sess.run(accuracy, feed_dict={x: x_val_data[idx_from:idx_to],
-                                                                    y: y_val_data[idx_from:idx_to], keep_prob: 1.0}))
+        idx_to = (i + 1) * 128
+        accuracy_array[i] = sess.run(accuracy, feed_dict={x: x_val_data[idx_from:idx_to],
+                                                          y: y_val_data[idx_from:idx_to], keep_prob: 1.0})
 
-    # Comment to space things out:
+    print("Average Holdout Accuracy: ", accuracy_array.sum() / num_val_blocks)
+
+    weights = np.zeros(shape=(NUMBER_CLASSES, NUMBER_DATA_CHANNELS), dtype=float)
+
+    input_shape = [1, DATA_WINDOW_SIZE, NUMBER_DATA_CHANNELS]
+    for i in range(0, x_val_data.shape[0]):
+        if y_val_data[i][0] == 1:
+            x_sample0 = x_val_data[i, :, :]
+            weight_sample = get_activations(h_conv1, x_sample0, input_shape, '', '', sum_all=True, save_data=False)
+            for w in range(0, weight_sample.shape[0]):
+                weights[0][w] += weight_sample[w]
+        if y_val_data[i][1] == 1:
+            x_sample0 = x_val_data[i, :, :]
+            weight_sample = get_activations(h_conv1, x_sample0, input_shape, '', '', sum_all=True, save_data=False)
+            for w in range(0, weight_sample.shape[0]):
+                weights[1][w] += weight_sample[w]
+        if y_val_data[i][2] == 1:
+            x_sample0 = x_val_data[i, :, :]
+            weight_sample = get_activations(h_conv1, x_sample0, input_shape, '', '', sum_all=True, save_data=False)
+            for w in range(0, weight_sample.shape[0]):
+                weights[2][w] += weight_sample[w]
+        if y_val_data[i][3] == 1:
+            x_sample0 = x_val_data[i, :, :]
+            weight_sample = get_activations(h_conv1, x_sample0, input_shape, '', '', sum_all=True, save_data=False)
+            for w in range(0, weight_sample.shape[0]):
+                weights[3][w] += weight_sample[w]
+        if y_val_data[i][4] == 1:
+            x_sample0 = x_val_data[i, :, :]
+            weight_sample = get_activations(h_conv1, x_sample0, input_shape, '', '', sum_all=True, save_data=False)
+            for w in range(0, weight_sample.shape[0]):
+                weights[4][w] += weight_sample[w]
+
+    print('weight_array[0]: ', weights[0])
+    print('weight_array[1]: ', weights[1])
+    print('weight_array[2]: ', weights[2])
+    print('weight_array[3]: ', weights[3])
+    print('weight_array[4]: ', weights[4])
+
     # Experimental Stuff:
     input_shape = [1, DATA_WINDOW_SIZE, NUMBER_DATA_CHANNELS]
     x_0 = np.zeros(input_shape, dtype=np.float32)
@@ -318,19 +369,20 @@ with tf.Session(config=config) as sess:
     # Get one sample and see what it outputs (Activations?) ?
     image_output_folder_name = EXPORT_DIRECTORY + DESCRIPTION_TRAINING_DATA + TIMESTAMP_START + '/' + 'h_conv1/'
     filename = 'sum_h_conv1'
-    print('Extract & Analyze Maps?')
-    x_sample0 = x_val_data[1, :, :]  # Save weights once
-    get_activations(h_conv1, x_sample0, input_shape, image_output_folder_name, filename, sum_all=True, save_data=True)
-    weights = np.zeros([NUMBER_DATA_CHANNELS])
 
+    print('Extract & Analyze Maps:')
+    # x_sample0 = x_val_data[0, :, :]  # Save weights once
+    # get_activations(h_conv1, x_sample0, input_shape, image_output_folder_name, filename, sum_all=True, save_data=True)
+    #
+    weights = np.zeros([NUMBER_DATA_CHANNELS])
     for i in range(0, x_val_data.shape[0]):
         x_sample0 = x_val_data[i, :, :]
-        weight_sample = get_activations(h_conv1, x_sample0, input_shape,
+        weight_sample = get_activations(h_pool2, x_sample0, input_shape,
                                         image_output_folder_name, filename, sum_all=True, save_data=False)
         for w in range(0, weight_sample.shape[0]):
             weights[w] += weight_sample[w]
     # Take Average:
-    weights = weights/x_val_data.shape[0]
+    weights = weights / x_val_data.shape[0]
     print('weights', weights)
     # Read from the tail of the argsort to find the n highest elements:
     weights_sorted = np.argsort(weights)[::-1]  # [:2] select last 2
