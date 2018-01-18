@@ -20,7 +20,7 @@ from tensorflow.python.tools import optimize_for_inference_lib
 # CONSTANTS:
 TIMESTAMP_START = datetime.datetime.fromtimestamp(time.time()).strftime('%Y%m%d_%H.%M.%S')
 VERSION_NUMBER = 'v0.2.0'
-TRAINING_FOLDER_PATH = r'_data/my_data/S1_2_psd_256'
+TRAINING_FOLDER_PATH = r'_data/my_data/S0_psd_256'
 DESCRIPTION_TRAINING_DATA = 'PSD_S1_S2'
 TEST_FOLDER_PATH = TRAINING_FOLDER_PATH + '/v'
 EXPORT_DIRECTORY = 'model_exports/' + VERSION_NUMBER + '/'
@@ -32,7 +32,11 @@ KEY_X_DATA_DICTIONARY = 'relevant_data'
 KEY_Y_DATA_DICTIONARY = 'Y'
 
 # IMAGE SHAPE/CHARACTERISTICS
+# DATA_WINDOW_SIZE = 64
+# DATA_WINDOW_SIZE = 96
 DATA_WINDOW_SIZE = 128
+# DATA_WINDOW_SIZE = 192
+# DATA_WINDOW_SIZE = 256
 NUMBER_CLASSES = 5
 TOTAL_DATA_CHANNELS = 2
 DEFAULT_IMAGE_SHAPE = [TOTAL_DATA_CHANNELS, DATA_WINDOW_SIZE]
@@ -49,18 +53,24 @@ LEARNING_RATE = 1e-5  # 'Step size' on n-D optimization plane
 STRIDE_CONV2D = [1, 1, 1, 1]
 
 MAX_POOL1_K_SIZE = [1, 2, 1, 1]  # Kernel Size
-MAX_POOL1_STRIDE = [1, 2, 1, 1]  # Stride 
+MAX_POOL1_STRIDE = [1, 2, 1, 1]  # Stride
 
-MAX_POOL2_K_SIZE = [1, 1, 2, 1]  # Kernel Size
-MAX_POOL2_STRIDE = [1, 1, 2, 1]  # Stride
+MAX_POOL2_K_SIZE = [1, 2, 1, 1]  # Kernel Size
+MAX_POOL2_STRIDE = [1, 2, 1, 1]  # Stride
 
 BIAS_VAR_CL1 = 32  # Number of kernel convolutions in h_conv1
 BIAS_VAR_CL2 = 64  # Number of kernel convolutions in h_conv2
 
-DIVIDER = MAX_POOL1_STRIDE[1] * MAX_POOL1_STRIDE[2] + MAX_POOL2_STRIDE[1] * MAX_POOL2_STRIDE[2]
+if NUMBER_DATA_CHANNELS > 2:
+    DIVIDER = MAX_POOL1_STRIDE[1] * MAX_POOL1_STRIDE[2] + MAX_POOL2_STRIDE[1] * MAX_POOL2_STRIDE[2]
+else:
+    if MAX_POOL1_STRIDE[1] > 1 or MAX_POOL2_STRIDE[1] > 1:
+        DIVIDER = 2 * MAX_POOL1_STRIDE[2] * MAX_POOL2_STRIDE[2]
+    else:
+        DIVIDER = MAX_POOL1_STRIDE[2] + MAX_POOL2_STRIDE[2]
 
-WEIGHT_VAR_CL1 = [1, 1, 1, BIAS_VAR_CL1]  # [5, NUMBER_DATA_CHANNELS, 1, 32]
-WEIGHT_VAR_CL2 = [1, 1, BIAS_VAR_CL1, BIAS_VAR_CL2]  # [5, NUMBER_DATA_CHANNELS, 32, 64]
+WEIGHT_VAR_CL1 = [1, 1, 1, BIAS_VAR_CL1]  # # [filter_height, filter_width, in_channels, out_channels]
+WEIGHT_VAR_CL2 = [1, 1, BIAS_VAR_CL1, BIAS_VAR_CL2]  # # [filter_height, filter_width, in_channels, out_channels]
 
 WEIGHT_VAR_FC1 = [(DATA_WINDOW_SIZE // DIVIDER) * NUMBER_DATA_CHANNELS * BIAS_VAR_CL2, BIAS_VAR_CL1 ** 2]
 MAX_POOL_FLAT_SHAPE_FC1 = [-1, NUMBER_DATA_CHANNELS * (DATA_WINDOW_SIZE // DIVIDER) * BIAS_VAR_CL2]
@@ -123,8 +133,11 @@ def bias_variable(shape):
 
 
 # Convolution and max-pooling functions
-def conv2d(x_, weights_):
-    return tf.nn.conv2d(x_, weights_, strides=STRIDE_CONV2D, padding='SAME')
+def conv2d(x_, w_, b_, stride):
+    # INPUT: [batch, in_height, in_width, in_channels]
+    x_ = tf.nn.conv2d(x_, w_, strides=stride, padding='SAME')
+    x_ = tf.nn.bias_add(x_, b_)
+    return tf.nn.relu(x_)
 
 
 def max_pool_2x2(x_):
@@ -203,7 +216,8 @@ x_input = tf.reshape(x, [-1, *DEFAULT_IMAGE_SHAPE, 1])
 W_conv1 = weight_variable(WEIGHT_VAR_CL1)
 b_conv1 = bias_variable([BIAS_VAR_CL1])
 
-h_conv1 = tf.nn.relu(conv2d(x_input, W_conv1) + b_conv1)
+# h_conv1 = tf.nn.relu(conv2d(x_input, W_conv1) + b_conv1)
+h_conv1 = conv2d(x_input, W_conv1, b_conv1, STRIDE_CONV2D)
 # h_pool1 = max_pool_2x2(h_conv1)
 h_pool1 = tf.nn.max_pool(h_conv1, MAX_POOL1_K_SIZE, MAX_POOL1_STRIDE, padding='SAME')
 
@@ -211,7 +225,8 @@ h_pool1 = tf.nn.max_pool(h_conv1, MAX_POOL1_K_SIZE, MAX_POOL1_STRIDE, padding='S
 W_conv2 = weight_variable(WEIGHT_VAR_CL2)
 b_conv2 = bias_variable([BIAS_VAR_CL2])
 
-h_conv2 = tf.nn.relu(conv2d(h_pool1, W_conv2) + b_conv2)
+# h_conv2 = tf.nn.relu(conv2d(h_pool1, W_conv2) + b_conv2)
+h_conv2 = conv2d(h_pool1, W_conv2, b_conv2, STRIDE_CONV2D)
 # h_pool2 = max_pool_2x2(h_conv2)
 h_pool2 = tf.nn.max_pool(h_conv2, MAX_POOL2_K_SIZE, MAX_POOL2_STRIDE, padding='SAME')
 
