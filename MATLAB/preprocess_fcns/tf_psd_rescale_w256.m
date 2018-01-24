@@ -12,10 +12,14 @@ if numel(X) == 512
     end
 end
 
-for ch = 1:2
-   Y(ch,:) = tf_welch_psd(X(:,ch), Fs, hannWin(256)); %
-   Y(ch,:) = rescale_minmax(Y(ch,:));
-end
+Y(001:128) = rescale_minmax(tf_welch_psd(X(:,1), Fs, hannWin(256)));
+
+Y(129:end) = rescale_minmax(tf_welch_psd(X(:,2), Fs, hannWin(256)));
+
+% for ch = 1:2
+%    Y(ch,:) = tf_welch_psd(X(:,ch), Fs, hannWin(256)); %
+%    Y(ch,:) = rescale_minmax(Y(ch,:));
+% end
 
 end
 
