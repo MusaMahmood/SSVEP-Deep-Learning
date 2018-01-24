@@ -30,7 +30,7 @@ if method == 'raw':
     DATA_WINDOW_SIZE = wlen
     DEFAULT_IMAGE_SHAPE = [DATA_WINDOW_SIZE, TOTAL_DATA_CHANNELS]
 else:
-    wlen = 256
+    wlen = 1024
     DATA_WINDOW_SIZE = wlen//2
     TRAINING_FOLDER_PATH = r'_data/my_data_32ch/S3_psd_decimate_wlen' + str(wlen)
     DEFAULT_IMAGE_SHAPE = [TOTAL_DATA_CHANNELS, DATA_WINDOW_SIZE]
@@ -51,7 +51,7 @@ SELECT_DATA_CHANNELS = np.asarray(range(1, 33))
 NUMBER_DATA_CHANNELS = SELECT_DATA_CHANNELS.shape[0]  # Selects first int in shape
 
 # FOR MODEL DESIGN
-NUMBER_STEPS = 250
+NUMBER_STEPS = 10000
 TRAIN_BATCH_SIZE = 64
 TEST_BATCH_SIZE = 64
 LEARNING_RATE = 1e-6  # 'Step size' on n-D optimization plane
@@ -68,9 +68,8 @@ BIAS_VAR_CL2 = 64  # # of Output channels (L2)
 WEIGHT_VAR_CL1 = [5, 5, 1, BIAS_VAR_CL1]  # [5, NUMBER_DATA_CHANNELS, 1, 32]
 WEIGHT_VAR_CL2 = [5, 5, BIAS_VAR_CL1, BIAS_VAR_CL2]  # [5, NUMBER_DATA_CHANNELS, 32, 64]
 
-
 BIAS_VAR_FC1 = [1024]
-WEIGHT_VAR_FC1 = [32*8*64, *BIAS_VAR_FC1]
+WEIGHT_VAR_FC1 = [DATA_WINDOW_SIZE//2//2*8*64, *BIAS_VAR_FC1]
 MAX_POOL_FLAT_SHAPE_FC1 = [-1, WEIGHT_VAR_FC1[0]]
 WEIGHT_VAR_FC_OUTPUT = [*BIAS_VAR_FC1, NUMBER_CLASSES]
 
@@ -301,7 +300,7 @@ with tf.Session(config=config) as sess:
             loss, train_accuracy = sess.run([cross_entropy, accuracy],
                                             feed_dict={x: batch_x_train, y: batch_y_train, keep_prob: 1.})
             print("Step", i, "training_accuracy: ", train_accuracy, "\n >>> mini-batch loss: " + "{:.6f}".format(loss))
-            loss_learning[i//10] = loss
+            loss_learning[i // 10] = loss
         if i % 20 == 0:
             # Calculate batch loss and accuracy
             offset = (val_step * TEST_BATCH_SIZE) % (x_test.shape[0] - TEST_BATCH_SIZE)
@@ -321,30 +320,11 @@ with tf.Session(config=config) as sess:
     print("Holdout Validation:", sess.run(accuracy, feed_dict={x: x_val_data, y: y_val_data,
                                                                keep_prob: 1.0}))
 
-    # print('Extract & Analyze Maps:')
-    # feature_map_folder_name = \
-    #     EXPORT_DIRECTORY + 'feature_maps_' + TIMESTAMP_START + '_wlen' + str(DATA_WINDOW_SIZE) + '/'
-    # os.makedirs(feature_map_folder_name)
-    # get_all_activations(x_val_data, feature_map_folder_name)
-
     print('Extract & Analyze Maps:')
-    input_shape = [1, DATA_WINDOW_SIZE, NUMBER_DATA_CHANNELS]
-    image_output_folder_name = \
+    feature_map_folder_name = \
         EXPORT_DIRECTORY + 'feature_maps_' + TIMESTAMP_START + '_wlen' + str(DATA_WINDOW_SIZE) + '/'
-    filename = 'get_activations.csv'
-    weights = np.zeros([NUMBER_DATA_CHANNELS])
-    for i in range(0, x_val_data.shape[0]):
-        x_sample0 = x_val_data[i, :, :]
-        weight_sample = get_activations(h_conv1, x_sample0, INPUT_IMAGE_SHAPE,
-                                        image_output_folder_name, filename, sum_all=True, save_data=False)
-        for w in range(0, weight_sample.shape[0]):
-            weights[w] += weight_sample[w]
-    # Take Average:
-    weights = weights / x_val_data.shape[0]
-    print('weights', weights)
-    # Read from the tail of the argsort to find the n highest elements:
-    weights_sorted = np.argsort(weights)[::-1]  # [:2] select last 2
-    print('weights_sorted: ', weights_sorted)
+    os.makedirs(feature_map_folder_name)
+    get_all_activations(x_val_data, feature_map_folder_name)
 
     user_input = input('Export Current Model?')
     if user_input == "1" or user_input.lower() == "y":

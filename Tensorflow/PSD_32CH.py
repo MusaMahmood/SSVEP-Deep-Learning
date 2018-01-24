@@ -21,7 +21,7 @@ from tensorflow.python.tools import optimize_for_inference_lib
 TIMESTAMP_START = datetime.datetime.fromtimestamp(time.time()).strftime('%Y%m%d_%H.%M.%S')
 VERSION_NUMBER = '32ch_psd_v0.2.0'
 DESCRIPTION_TRAINING_DATA = '_allset_'
-TRAINING_FOLDER_PATH = r'_data/my_data_32ch/S1_psd_decimate_wlen1024'
+TRAINING_FOLDER_PATH = r'_data/my_data_32ch/S3_psd_decimate_wlen1024'
 TEST_FOLDER_PATH = TRAINING_FOLDER_PATH + '/v'
 EXPORT_DIRECTORY = 'model_exports/' + VERSION_NUMBER + '/'
 MODEL_NAME = 'ssvep_net_8ch'
@@ -41,7 +41,7 @@ SELECT_DATA_CHANNELS = np.asarray(range(1, 33))
 NUMBER_DATA_CHANNELS = SELECT_DATA_CHANNELS.shape[0]  # Selects first int in shape
 
 # FOR MODEL DESIGN
-NUMBER_STEPS = 2500
+NUMBER_STEPS = 10000
 TRAIN_BATCH_SIZE = 128
 TEST_BATCH_SIZE = 64
 LEARNING_RATE = 5e-6  # 'Step size' on n-D optimization plane
@@ -221,8 +221,6 @@ x_data, y_data = load_data(TRAINING_FOLDER_PATH)
 x_val_data, y_val_data = load_data(TEST_FOLDER_PATH)
 # Split training set:
 x_train, x_test, y_train, y_test = train_test_split(x_data, y_data, train_size=0.75, random_state=1)
-x_test = x_val_data
-y_test = y_val_data
 
 # TRAIN ROUTINE #
 init_op = tf.global_variables_initializer()

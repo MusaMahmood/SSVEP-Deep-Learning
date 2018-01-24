@@ -22,15 +22,17 @@ from tensorflow.python.tools import optimize_for_inference_lib
 TIMESTAMP_START = datetime.datetime.fromtimestamp(time.time()).strftime('%Y%m%d_%H.%M.%S')
 VERSION_NUMBER = 'v0.1.0'
 DESCRIPTION_TRAINING_DATA = '_allset_'
-TRAINING_FOLDER_PATH = r'_data/S1copy/a'
-TEST_FOLDER_PATH = r'_data/S1copy/b'
+# TRAINING_FOLDER_PATH = r'_data/my_data/S1copy/a'
+TRAINING_FOLDER_PATH = r'_data/my_data/Robbie_2ch_2018_01_05'
+# TEST_FOLDER_PATH = r'_data/my_data/S1copy/b'
+TEST_FOLDER_PATH = r'_data/my_data/Robbie_2ch_2018_01_05/v'
 EXPORT_DIRECTORY = 'model_exports/' + VERSION_NUMBER + '/'
 MODEL_NAME = 'ssvep_net_2ch'
 KEY_DATA_DICTIONARY = 'relevant_data'
-NUMBER_STEPS = 5000
+NUMBER_STEPS = 10000
 TRAIN_BATCH_SIZE = 256
 TEST_BATCH_SIZE = 64
-DATA_WINDOW_SIZE = 256
+DATA_WINDOW_SIZE = 400
 MOVING_WINDOW_SHIFT = 32
 NUMBER_DATA_CHANNELS = 2
 LEARNING_RATE = 1e-5  # 'Step size' on n-D optimization plane
@@ -86,7 +88,6 @@ def separate_data(input_data):
             x_window = data_window_array[:, 0:NUMBER_DATA_CHANNELS:1]  # [0:2:1]
             # TODO: USE SAME FILTER AS IN ANDROID (C++ filt params)
             # Will need to pass through that filter in Android before feeding to model.
-            # mm_scale = preprocessing.MinMaxScaler(feature_range=(-1, 1)).fit(x_window)
             mm_scale = preprocessing.MinMaxScaler(feature_range=(0, 1)).fit(x_window)
             x_window = mm_scale.transform(x_window)
 
@@ -157,7 +158,7 @@ def max_pool_2x2(x_):
 # MODEL INPUT #
 x = tf.placeholder(tf.float32, shape=[None, DATA_WINDOW_SIZE, NUMBER_DATA_CHANNELS], name=input_node_name)
 keep_prob = tf.placeholder(tf.float32, name=keep_prob_node_name)
-y = tf.placeholder(tf.float32, shape=[None, 5])
+y = tf.placeholder(tf.float32, shape=[None, NUMBER_CLASSES])
 
 x_input = tf.reshape(x, [-1, DATA_WINDOW_SIZE, NUMBER_DATA_CHANNELS, 1])
 
