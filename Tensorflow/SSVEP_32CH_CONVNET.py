@@ -13,7 +13,7 @@ import datetime
 import glob
 import time
 
-from scipy.io import loadmat
+from scipy.io import loadmat, savemat
 from sklearn import preprocessing
 from sklearn.model_selection import train_test_split
 from tensorflow.python.tools import freeze_graph
@@ -23,7 +23,7 @@ from math import floor
 # CONSTANTS:
 TIMESTAMP_START = datetime.datetime.fromtimestamp(time.time()).strftime('%Y%m%d_%H.%M.%S')
 print("TIMESTAMP_START ", TIMESTAMP_START)
-VERSION_NUMBER = 'v0.1.2'
+VERSION_NUMBER = '32ch_v0.2.0'
 DESCRIPTION_TRAINING_DATA = '_allset_'
 TRAINING_FOLDER_PATH = r'_data/my_data_32ch/old/S1_decimate'
 TEST_FOLDER_PATH = TRAINING_FOLDER_PATH + '/v'
@@ -33,7 +33,7 @@ CHECKPOINT_FILE = EXPORT_DIRECTORY + MODEL_NAME + '.ckpt'
 NUMBER_CLASSES = 5
 # TODO: USE PSD NOT THIS!
 KEY_DATA_DICTIONARY = 'relevant_data'
-NUMBER_STEPS = 10000
+NUMBER_STEPS = 100
 TRAIN_BATCH_SIZE = 256
 TEST_BATCH_SIZE = 128
 DATA_WINDOW_SIZE = 512
@@ -43,6 +43,7 @@ SELECT_DATA_CHANNELS = np.asarray(range(0, 32))
 NUMBER_DATA_CHANNELS = SELECT_DATA_CHANNELS.shape[0]  # Selects first int in shape
 LEARNING_RATE = 1e-5  # 'Step size' on n-D optimization plane
 TRAINING_KEEP_PROB = 0.5
+INPUT_IMAGE_SHAPE = [1, DATA_WINDOW_SIZE, NUMBER_DATA_CHANNELS]
 
 # FOR MODEL DESIGN
 STRIDE_CONV2D = [1, 1, 1, 1]
@@ -255,7 +256,7 @@ x_train, x_test, y_train, y_test = train_test_split(x_data, y_data, train_size=0
 
 print("samples: train batch: ", x_train.shape)
 print("samples: test batch: ", x_test.shape)
-# print("samples: validation batch: ", x_val_data.shape)
+print("samples: validation batch: ", x_val_data.shape)
 
 # TRAIN ROUTINE #
 init_op = tf.global_variables_initializer()
@@ -288,7 +289,7 @@ with tf.Session(config=config) as sess:
             loss, train_accuracy = sess.run([cross_entropy, accuracy], feed_dict={x: batch_x_train, y: batch_y_train,
                                                                                   keep_prob: 1.})
             # print("step %d, training accuracy %g" % (i, train_accuracy))
-            print("Step", i, "training_accuracy: ", train_accuracy, "mini-batch loss = " + "{:.6f}".format(loss))
+            print("Step", i, "training_accuracy: ", train_accuracy, "\n>>>mini-batch loss = " + "{:.6f}".format(loss))
 
         if i % 20 == 0:
             # Calculate batch loss and accuracy
@@ -318,66 +319,18 @@ with tf.Session(config=config) as sess:
 
     print("Average Holdout Accuracy: ", accuracy_array.sum() / num_val_blocks)
 
-    weights = np.zeros(shape=(NUMBER_CLASSES, NUMBER_DATA_CHANNELS), dtype=float)
-
-    input_shape = [1, DATA_WINDOW_SIZE, NUMBER_DATA_CHANNELS]
-    for i in range(0, x_val_data.shape[0]):
-        if y_val_data[i][0] == 1:
-            x_sample0 = x_val_data[i, :, :]
-            weight_sample = get_activations(h_conv1, x_sample0, input_shape, '', '', sum_all=True, save_data=False)
-            for w in range(0, weight_sample.shape[0]):
-                weights[0][w] += weight_sample[w]
-        if y_val_data[i][1] == 1:
-            x_sample0 = x_val_data[i, :, :]
-            weight_sample = get_activations(h_conv1, x_sample0, input_shape, '', '', sum_all=True, save_data=False)
-            for w in range(0, weight_sample.shape[0]):
-                weights[1][w] += weight_sample[w]
-        if y_val_data[i][2] == 1:
-            x_sample0 = x_val_data[i, :, :]
-            weight_sample = get_activations(h_conv1, x_sample0, input_shape, '', '', sum_all=True, save_data=False)
-            for w in range(0, weight_sample.shape[0]):
-                weights[2][w] += weight_sample[w]
-        if y_val_data[i][3] == 1:
-            x_sample0 = x_val_data[i, :, :]
-            weight_sample = get_activations(h_conv1, x_sample0, input_shape, '', '', sum_all=True, save_data=False)
-            for w in range(0, weight_sample.shape[0]):
-                weights[3][w] += weight_sample[w]
-        if y_val_data[i][4] == 1:
-            x_sample0 = x_val_data[i, :, :]
-            weight_sample = get_activations(h_conv1, x_sample0, input_shape, '', '', sum_all=True, save_data=False)
-            for w in range(0, weight_sample.shape[0]):
-                weights[4][w] += weight_sample[w]
-
-    print('weight_array[0]: ', weights[0])
-    print('weight_array[1]: ', weights[1])
-    print('weight_array[2]: ', weights[2])
-    print('weight_array[3]: ', weights[3])
-    print('weight_array[4]: ', weights[4])
-
-    # Experimental Stuff:
-    input_shape = [1, DATA_WINDOW_SIZE, NUMBER_DATA_CHANNELS]
-    x_0 = np.zeros(input_shape, dtype=np.float32)
-    print("Model Dimensions: ")
-    print("h_conv1: ", sess.run(h_conv1, feed_dict={x: x_0, keep_prob: 1.0}).shape)
-    print("h_pool1: ", sess.run(h_pool1, feed_dict={x: x_0, keep_prob: 1.0}).shape)
-    print("h_conv2: ", sess.run(h_conv2, feed_dict={x: x_0, keep_prob: 1.0}).shape)
-    print("h_pool2: ", sess.run(h_pool2, feed_dict={x: x_0, keep_prob: 1.0}).shape)
-    print("h_pool2_flat: ", sess.run(h_pool2_flat, feed_dict={x: x_0, keep_prob: 1.0}).shape)
-    print("h_fc1: ", sess.run(h_fc1, feed_dict={x: x_0, keep_prob: 1.0}).shape)
-    print("h_fc1_drop: ", sess.run(h_fc1_drop, feed_dict={x: x_0, keep_prob: 1.0}).shape)
-    print("y_conv: ", sess.run(y_conv, feed_dict={x: x_0, keep_prob: 1.0}).shape)
-    # Get one sample and see what it outputs (Activations?) ?
-    image_output_folder_name = EXPORT_DIRECTORY + DESCRIPTION_TRAINING_DATA + TIMESTAMP_START + '/' + 'h_conv1/'
-    filename = 'sum_h_conv1'
-
     print('Extract & Analyze Maps:')
     # x_sample0 = x_val_data[0, :, :]  # Save weights once
     # get_activations(h_conv1, x_sample0, input_shape, image_output_folder_name, filename, sum_all=True, save_data=True)
     #
+    input_shape = [1, DATA_WINDOW_SIZE, NUMBER_DATA_CHANNELS]
+    image_output_folder_name = \
+        EXPORT_DIRECTORY + 'feature_maps_' + TIMESTAMP_START + '_wlen' + str(DATA_WINDOW_SIZE) + '/'
+    filename = 'get_activations.csv'
     weights = np.zeros([NUMBER_DATA_CHANNELS])
     for i in range(0, x_val_data.shape[0]):
         x_sample0 = x_val_data[i, :, :]
-        weight_sample = get_activations(h_pool2, x_sample0, input_shape,
+        weight_sample = get_activations(h_conv1, x_sample0, input_shape,
                                         image_output_folder_name, filename, sum_all=True, save_data=False)
         for w in range(0, weight_sample.shape[0]):
             weights[w] += weight_sample[w]

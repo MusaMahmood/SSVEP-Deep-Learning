@@ -21,7 +21,20 @@ from tensorflow.python.tools import optimize_for_inference_lib
 TIMESTAMP_START = datetime.datetime.fromtimestamp(time.time()).strftime('%Y%m%d_%H.%M.%S')
 VERSION_NUMBER = '32ch_psd_v0.2.0'
 DESCRIPTION_TRAINING_DATA = '_allset_'
-TRAINING_FOLDER_PATH = r'_data/my_data_32ch/S1_psd_decimate_wlen1024'
+method = 'psd'
+# method = 'raw'
+TOTAL_DATA_CHANNELS = 32
+if method == 'raw':
+    wlen = 1024
+    TRAINING_FOLDER_PATH = r'_data/my_data_32ch/S1_raw_decimate_wlen' + str(wlen)
+    DATA_WINDOW_SIZE = wlen
+    DEFAULT_IMAGE_SHAPE = [DATA_WINDOW_SIZE, TOTAL_DATA_CHANNELS]
+else:
+    wlen = 256
+    DATA_WINDOW_SIZE = wlen//2
+    TRAINING_FOLDER_PATH = r'_data/my_data_32ch/S3_psd_decimate_wlen' + str(wlen)
+    DEFAULT_IMAGE_SHAPE = [TOTAL_DATA_CHANNELS, DATA_WINDOW_SIZE]
+
 TEST_FOLDER_PATH = TRAINING_FOLDER_PATH + '/v'
 EXPORT_DIRECTORY = 'model_exports/' + VERSION_NUMBER + '/'
 MODEL_NAME = 'ssvep_net_8ch'
@@ -33,34 +46,31 @@ KEY_Y_DATA_DICTIONARY = 'Y'
 
 # IMAGE SHAPE/CHARACTERISTICS
 NUMBER_CLASSES = 5
-DATA_WINDOW_SIZE = 512
-TOTAL_DATA_CHANNELS = 32
-DEFAULT_IMAGE_SHAPE = [TOTAL_DATA_CHANNELS, DATA_WINDOW_SIZE]
-INPUT_IMAGE_SHAPE = [1, TOTAL_DATA_CHANNELS, DATA_WINDOW_SIZE]
+INPUT_IMAGE_SHAPE = [1, DEFAULT_IMAGE_SHAPE[0], DEFAULT_IMAGE_SHAPE[1]]
 SELECT_DATA_CHANNELS = np.asarray(range(1, 33))
 NUMBER_DATA_CHANNELS = SELECT_DATA_CHANNELS.shape[0]  # Selects first int in shape
 
 # FOR MODEL DESIGN
-NUMBER_STEPS = 2500
-TRAIN_BATCH_SIZE = 128
+NUMBER_STEPS = 250
+TRAIN_BATCH_SIZE = 64
 TEST_BATCH_SIZE = 64
-LEARNING_RATE = 5e-6  # 'Step size' on n-D optimization plane
-TRAINING_KEEP_PROB = 0.45
+LEARNING_RATE = 1e-6  # 'Step size' on n-D optimization plane
+TRAINING_KEEP_PROB = 0.5
 
 STRIDE_CONV2D = [1, 1, 1, 1]
 
-MAX_POOL_K_SIZE = [1, 2, 2, 1]
+MAX_POOL_K_SIZE = [1, 5, 5, 1]
 MAX_POOL_STRIDE = [1, 2, 2, 1]
 
 BIAS_VAR_CL1 = 32  # # of Output channels (L1)
 BIAS_VAR_CL2 = 64  # # of Output channels (L2)
 
-WEIGHT_VAR_CL1 = [1, 1, 1, BIAS_VAR_CL1]  # [5, NUMBER_DATA_CHANNELS, 1, 32]
-WEIGHT_VAR_CL2 = [2, 2, BIAS_VAR_CL1, BIAS_VAR_CL2]  # [5, NUMBER_DATA_CHANNELS, 32, 64]
+WEIGHT_VAR_CL1 = [5, 5, 1, BIAS_VAR_CL1]  # [5, NUMBER_DATA_CHANNELS, 1, 32]
+WEIGHT_VAR_CL2 = [5, 5, BIAS_VAR_CL1, BIAS_VAR_CL2]  # [5, NUMBER_DATA_CHANNELS, 32, 64]
 
 
 BIAS_VAR_FC1 = [1024]
-WEIGHT_VAR_FC1 = [8*128*64, *BIAS_VAR_FC1]
+WEIGHT_VAR_FC1 = [32*8*64, *BIAS_VAR_FC1]
 MAX_POOL_FLAT_SHAPE_FC1 = [-1, WEIGHT_VAR_FC1[0]]
 WEIGHT_VAR_FC_OUTPUT = [*BIAS_VAR_FC1, NUMBER_CLASSES]
 
@@ -127,6 +137,34 @@ def conv2d(x_, weights_):
 def max_pool_2x2(x_):
     return tf.nn.max_pool(x_, ksize=MAX_POOL_K_SIZE,
                           strides=MAX_POOL_STRIDE, padding='SAME')
+
+
+def get_activations(layer, input_val, shape, directory, file_name, sum_all=False, save_data=False):
+    if save_data:
+        os.makedirs(directory, exist_ok=True)
+
+    units = sess.run(layer, feed_dict={x: np.reshape(input_val, shape, order='F'), keep_prob: 1.0})
+
+    # plot_nn_filter(units, directory + file_name, True)
+    new_shape = [units.shape[1], units.shape[2]]
+    feature_maps = units.shape[3]
+    filename_ = directory + file_name
+    if sum_all:
+        new_array = np.reshape(units.sum(axis=3), new_shape)
+        if save_data:
+            print("units.shape: ", units.shape)
+            pd.DataFrame(new_array).to_csv(filename_ + '_weight_matrix' + '.csv', index=False, header=False)
+        summed_array = new_array.sum(axis=0)
+        if save_data:
+            pd.DataFrame(summed_array).to_csv(filename_ + '_sum_all' + '.csv', index=False, header=False)
+            print('All Values:')
+        return summed_array
+    else:
+        if save_data:
+            for i0 in range(feature_maps):
+                pd.DataFrame(units[:, :, :, i0].reshape(new_shape)).to_csv(
+                    filename_ + '_' + str(i0 + 1) + '.csv', index=False, header=False)
+        return units
 
 
 def get_activations_mat(layer, input_val, shape):
@@ -221,8 +259,6 @@ x_data, y_data = load_data(TRAINING_FOLDER_PATH)
 x_val_data, y_val_data = load_data(TEST_FOLDER_PATH)
 # Split training set:
 x_train, x_test, y_train, y_test = train_test_split(x_data, y_data, train_size=0.75, random_state=1)
-x_test = x_val_data
-y_test = y_val_data
 
 # TRAIN ROUTINE #
 init_op = tf.global_variables_initializer()
@@ -255,7 +291,7 @@ with tf.Session(config=config) as sess:
     # save model as pbtxt:
     tf.train.write_graph(sess.graph_def, EXPORT_DIRECTORY, MODEL_NAME + '.pbtxt', True)
 
-    loss_learning = np.zeros([NUMBER_STEPS], dtype=np.float64)
+    loss_learning = np.zeros([NUMBER_STEPS//10], dtype=np.float64)
 
     for i in range(NUMBER_STEPS):
         offset = (i * TRAIN_BATCH_SIZE) % (x_train.shape[0] - TRAIN_BATCH_SIZE)
@@ -265,7 +301,7 @@ with tf.Session(config=config) as sess:
             loss, train_accuracy = sess.run([cross_entropy, accuracy],
                                             feed_dict={x: batch_x_train, y: batch_y_train, keep_prob: 1.})
             print("Step", i, "training_accuracy: ", train_accuracy, "\n >>> mini-batch loss: " + "{:.6f}".format(loss))
-            loss_learning[i] = loss
+            loss_learning[i//10] = loss
         if i % 20 == 0:
             # Calculate batch loss and accuracy
             offset = (val_step * TEST_BATCH_SIZE) % (x_test.shape[0] - TEST_BATCH_SIZE)
@@ -285,20 +321,30 @@ with tf.Session(config=config) as sess:
     print("Holdout Validation:", sess.run(accuracy, feed_dict={x: x_val_data, y: y_val_data,
                                                                keep_prob: 1.0}))
 
-    # Get one sample and see what it outputs (Activations?) ?
+    # print('Extract & Analyze Maps:')
+    # feature_map_folder_name = \
+    #     EXPORT_DIRECTORY + 'feature_maps_' + TIMESTAMP_START + '_wlen' + str(DATA_WINDOW_SIZE) + '/'
+    # os.makedirs(feature_map_folder_name)
+    # get_all_activations(x_val_data, feature_map_folder_name)
 
-    # x_sample0 = x_val_data[1, :, :]
-    # weights = get_activations(h_conv1, x_sample0, INPUT_IMAGE_SHAPE, image_output_folder_name,
-    #                           filename, sum_all=True)
-    # print('weights', weights)
-    # Read from the tail of the arg-sort to find the n highest elements:
-    # weights_sorted = np.argsort(weights)[::-1]  # [:2] select last 2
-    # print('weights_sorted: ', weights_sorted)
     print('Extract & Analyze Maps:')
-    feature_map_folder_name = EXPORT_DIRECTORY + 'feature_maps_' + TIMESTAMP_START + '_wlen' + str(DATA_WINDOW_SIZE) \
-                              + '/'
-    os.makedirs(feature_map_folder_name)
-    get_all_activations(x_val_data, feature_map_folder_name)
+    input_shape = [1, DATA_WINDOW_SIZE, NUMBER_DATA_CHANNELS]
+    image_output_folder_name = \
+        EXPORT_DIRECTORY + 'feature_maps_' + TIMESTAMP_START + '_wlen' + str(DATA_WINDOW_SIZE) + '/'
+    filename = 'get_activations.csv'
+    weights = np.zeros([NUMBER_DATA_CHANNELS])
+    for i in range(0, x_val_data.shape[0]):
+        x_sample0 = x_val_data[i, :, :]
+        weight_sample = get_activations(h_conv1, x_sample0, INPUT_IMAGE_SHAPE,
+                                        image_output_folder_name, filename, sum_all=True, save_data=False)
+        for w in range(0, weight_sample.shape[0]):
+            weights[w] += weight_sample[w]
+    # Take Average:
+    weights = weights / x_val_data.shape[0]
+    print('weights', weights)
+    # Read from the tail of the argsort to find the n highest elements:
+    weights_sorted = np.argsort(weights)[::-1]  # [:2] select last 2
+    print('weights_sorted: ', weights_sorted)
 
     user_input = input('Export Current Model?')
     if user_input == "1" or user_input.lower() == "y":
