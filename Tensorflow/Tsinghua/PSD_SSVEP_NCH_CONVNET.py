@@ -21,8 +21,8 @@ from tensorflow.python.tools import optimize_for_inference_lib
 TIMESTAMP_START = datetime.datetime.fromtimestamp(time.time()).strftime('%Y%m%d_%H.%M.%S')
 VERSION_NUMBER = 'v0.1.2'
 DESCRIPTION_TRAINING_DATA = '_LAST32CHS_'
-TRAINING_FOLDER_PATH = r'ssvep_benchmark/psd_200p/S1'
-TEST_FOLDER_PATH = r'ssvep_benchmark/psd_200p/S1val'
+TRAINING_FOLDER_PATH = r'ssvep_benchmark/windowed_160/S1'
+TEST_FOLDER_PATH = r'ssvep_benchmark/PSD/S1val'
 EXPORT_DIRECTORY = 'model_exports/' + VERSION_NUMBER + '/'
 KEY_X_DATA_DICTIONARY = 'relevant_data'
 KEY_Y_DATA_DICTIONARY = 'Y'
@@ -30,9 +30,9 @@ KEY_Y_DATA_DICTIONARY = 'Y'
 # IMAGE SHAPE/CHARACTERISTICS
 NUMBER_CLASSES = 5
 TOTAL_DATA_CHANNELS = 64
-DATA_WINDOW_SIZE = 200  # TODO: Make sure this is correct.
+DATA_WINDOW_SIZE = 160  # TODO: Make sure this is correct.
 # SELECT_DATA_CHANNELS = np.asarray(range(0, 32))  # - 1
-SELECT_DATA_CHANNELS = np.asarray(range(32, 64))  # - 1
+SELECT_DATA_CHANNELS = np.asarray(range(0, 64))  # - 1
 NUMBER_DATA_CHANNELS = SELECT_DATA_CHANNELS.shape[0]  # Selects first int in shape
 DEFAULT_IMAGE_SHAPE = [DATA_WINDOW_SIZE, NUMBER_DATA_CHANNELS]
 INPUT_IMAGE_SHAPE = [1, DATA_WINDOW_SIZE, NUMBER_DATA_CHANNELS]
@@ -43,11 +43,11 @@ CHECKPOINT_FILE = EXPORT_DIRECTORY + MODEL_NAME + '.ckpt'
 
 # FOR MODEL DESIGN
 if NUMBER_DATA_CHANNELS > 16:
-    NUMBER_STEPS = 5000
+    NUMBER_STEPS = 10000
 else:
     NUMBER_STEPS = 10000
 
-TRAIN_BATCH_SIZE = 64
+TRAIN_BATCH_SIZE = 128
 TEST_BATCH_SIZE = 32
 LEARNING_RATE = 1e-5  # 'Step size' on n-D optimization plane
 STRIDE_CONV2D = [1, 1, 1, 1]
@@ -254,6 +254,7 @@ with tf.Session(config=config) as sess:
         offset = (i * TRAIN_BATCH_SIZE) % (x_train.shape[0] - TRAIN_BATCH_SIZE)
         batch_x_train = x_train[offset:(offset + TRAIN_BATCH_SIZE)]
         batch_y_train = y_train[offset:(offset + TRAIN_BATCH_SIZE)]
+
         if i % 10 == 0:
             train_accuracy = accuracy.eval(feed_dict={x: batch_x_train, y: batch_y_train, keep_prob: 1.0})
             print("step %d, training accuracy %g" % (i, train_accuracy))
