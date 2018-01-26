@@ -21,7 +21,8 @@ from tensorflow.python.tools import optimize_for_inference_lib
 TIMESTAMP_START = datetime.datetime.fromtimestamp(time.time()).strftime('%Y%m%d_%H.%M.%S')
 VERSION_NUMBER = '32ch_psd_v0.2.0'
 DESCRIPTION_TRAINING_DATA = '_allset_'
-TRAINING_FOLDER_PATH = r'_data/my_data_32ch/S3_psd_decimate_wlen1024'
+win_len = 256
+TRAINING_FOLDER_PATH = r'_data/my_data_32ch/S3_psd_decimate_wlen' + str(win_len)
 TEST_FOLDER_PATH = TRAINING_FOLDER_PATH + '/v'
 EXPORT_DIRECTORY = 'model_exports/' + VERSION_NUMBER + '/'
 MODEL_NAME = 'ssvep_net_8ch'
@@ -33,7 +34,7 @@ KEY_Y_DATA_DICTIONARY = 'Y'
 
 # IMAGE SHAPE/CHARACTERISTICS
 NUMBER_CLASSES = 5
-DATA_WINDOW_SIZE = 512
+DATA_WINDOW_SIZE = win_len // 2
 TOTAL_DATA_CHANNELS = 32
 DEFAULT_IMAGE_SHAPE = [TOTAL_DATA_CHANNELS, DATA_WINDOW_SIZE]
 INPUT_IMAGE_SHAPE = [1, TOTAL_DATA_CHANNELS, DATA_WINDOW_SIZE]
@@ -58,14 +59,12 @@ BIAS_VAR_CL2 = 64  # # of Output channels (L2)
 WEIGHT_VAR_CL1 = [1, 1, 1, BIAS_VAR_CL1]  # [5, NUMBER_DATA_CHANNELS, 1, 32]
 WEIGHT_VAR_CL2 = [2, 2, BIAS_VAR_CL1, BIAS_VAR_CL2]  # [5, NUMBER_DATA_CHANNELS, 32, 64]
 
-
 BIAS_VAR_FC1 = [1024]
-WEIGHT_VAR_FC1 = [8*128*64, *BIAS_VAR_FC1]
+WEIGHT_VAR_FC1 = [NUMBER_DATA_CHANNELS // 4 * DATA_WINDOW_SIZE // 4 * 64, *BIAS_VAR_FC1]
 MAX_POOL_FLAT_SHAPE_FC1 = [-1, WEIGHT_VAR_FC1[0]]
 WEIGHT_VAR_FC_OUTPUT = [*BIAS_VAR_FC1, NUMBER_CLASSES]
 
 BIAS_VAR_FC_OUTPUT = [NUMBER_CLASSES]
-
 
 # Start Script Here:
 if not path.exists(EXPORT_DIRECTORY):
@@ -253,7 +252,7 @@ with tf.Session(config=config) as sess:
     # save model as pbtxt:
     tf.train.write_graph(sess.graph_def, EXPORT_DIRECTORY, MODEL_NAME + '.pbtxt', True)
 
-    loss_learning = np.zeros([NUMBER_STEPS], dtype=np.float64)
+    loss_learning = np.zeros([NUMBER_STEPS // 10], dtype=np.float64)
 
     for i in range(NUMBER_STEPS):
         offset = (i * TRAIN_BATCH_SIZE) % (x_train.shape[0] - TRAIN_BATCH_SIZE)
@@ -263,7 +262,7 @@ with tf.Session(config=config) as sess:
             loss, train_accuracy = sess.run([cross_entropy, accuracy],
                                             feed_dict={x: batch_x_train, y: batch_y_train, keep_prob: 1.})
             print("Step", i, "training_accuracy: ", train_accuracy, "\n >>> mini-batch loss: " + "{:.6f}".format(loss))
-            loss_learning[i] = loss
+            loss_learning[i // 10] = loss
         if i % 20 == 0:
             # Calculate batch loss and accuracy
             offset = (val_step * TEST_BATCH_SIZE) % (x_test.shape[0] - TEST_BATCH_SIZE)
@@ -284,17 +283,9 @@ with tf.Session(config=config) as sess:
                                                                keep_prob: 1.0}))
 
     # Get one sample and see what it outputs (Activations?) ?
-
-    # x_sample0 = x_val_data[1, :, :]
-    # weights = get_activations(h_conv1, x_sample0, INPUT_IMAGE_SHAPE, image_output_folder_name,
-    #                           filename, sum_all=True)
-    # print('weights', weights)
-    # Read from the tail of the arg-sort to find the n highest elements:
-    # weights_sorted = np.argsort(weights)[::-1]  # [:2] select last 2
-    # print('weights_sorted: ', weights_sorted)
     print('Extract & Analyze Maps:')
-    feature_map_folder_name = EXPORT_DIRECTORY + 'feature_maps_' + TIMESTAMP_START + '_wlen' + str(DATA_WINDOW_SIZE) \
-                              + '/'
+    feature_map_folder_name = \
+        EXPORT_DIRECTORY + 'feature_maps_' + TIMESTAMP_START + '_wlen' + str(DATA_WINDOW_SIZE) + '/'
     os.makedirs(feature_map_folder_name)
     get_all_activations(x_val_data, feature_map_folder_name)
 

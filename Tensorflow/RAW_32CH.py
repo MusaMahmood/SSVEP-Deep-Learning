@@ -31,7 +31,7 @@ if method == 'raw':
     DEFAULT_IMAGE_SHAPE = [DATA_WINDOW_SIZE, TOTAL_DATA_CHANNELS]
 else:
     wlen = 1024
-    DATA_WINDOW_SIZE = wlen//2
+    DATA_WINDOW_SIZE = wlen // 2
     TRAINING_FOLDER_PATH = r'_data/my_data_32ch/S3_psd_decimate_wlen' + str(wlen)
     DEFAULT_IMAGE_SHAPE = [TOTAL_DATA_CHANNELS, DATA_WINDOW_SIZE]
 
@@ -69,7 +69,7 @@ WEIGHT_VAR_CL1 = [5, 5, 1, BIAS_VAR_CL1]  # [5, NUMBER_DATA_CHANNELS, 1, 32]
 WEIGHT_VAR_CL2 = [5, 5, BIAS_VAR_CL1, BIAS_VAR_CL2]  # [5, NUMBER_DATA_CHANNELS, 32, 64]
 
 BIAS_VAR_FC1 = [1024]
-WEIGHT_VAR_FC1 = [DATA_WINDOW_SIZE//2//2*8*64, *BIAS_VAR_FC1]
+WEIGHT_VAR_FC1 = [DATA_WINDOW_SIZE//4*NUMBER_DATA_CHANNELS//4*64, *BIAS_VAR_FC1]
 MAX_POOL_FLAT_SHAPE_FC1 = [-1, WEIGHT_VAR_FC1[0]]
 WEIGHT_VAR_FC_OUTPUT = [*BIAS_VAR_FC1, NUMBER_CLASSES]
 
@@ -326,7 +326,7 @@ with tf.Session(config=config) as sess:
     os.makedirs(feature_map_folder_name)
     get_all_activations(x_val_data, feature_map_folder_name)
 
-    user_input = input('Export Current Model?')
-    if user_input == "1" or user_input.lower() == "y":
-        saver.save(sess, CHECKPOINT_FILE)
-        export_model([input_node_name, keep_prob_node_name], output_node_name)
+    # user_input = input('Export Current Model?')
+    # if user_input == "1" or user_input.lower() == "y":
+    #     saver.save(sess, CHECKPOINT_FILE)
+    #     export_model([input_node_name, keep_prob_node_name], output_node_name)
