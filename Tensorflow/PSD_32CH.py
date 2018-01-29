@@ -21,7 +21,7 @@ from tensorflow.python.tools import optimize_for_inference_lib
 TIMESTAMP_START = datetime.datetime.fromtimestamp(time.time()).strftime('%Y%m%d_%H.%M.%S')
 VERSION_NUMBER = '32ch_psd_v0.2.0'
 DESCRIPTION_TRAINING_DATA = '_allset_'
-win_len = 256
+win_len = 1024
 TRAINING_FOLDER_PATH = r'_data/my_data_32ch/S3_psd_decimate_wlen' + str(win_len)
 TEST_FOLDER_PATH = TRAINING_FOLDER_PATH + '/v'
 EXPORT_DIRECTORY = 'model_exports/' + VERSION_NUMBER + '/'
@@ -204,6 +204,8 @@ b_fco = bias_variable(BIAS_VAR_FC_OUTPUT)
 y_conv = tf.matmul(h_fc1_drop, W_fco) + b_fco
 outputs = tf.nn.softmax(y_conv, name=output_node_name)
 
+prediction = tf.argmax(outputs, 1)
+
 # training and reducing the cost/loss function
 cross_entropy = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=y, logits=y_conv))
 train_step = tf.train.AdamOptimizer(LEARNING_RATE).minimize(cross_entropy)
@@ -281,6 +283,19 @@ with tf.Session(config=config) as sess:
     # Holdout Validation Accuracy:
     print("Holdout Validation:", sess.run(accuracy, feed_dict={x: x_val_data, y: y_val_data,
                                                                keep_prob: 1.0}))
+
+    y_val_tf = np.zeros([x_val_data.shape[0]], dtype=np.int32)
+    predictions = np.zeros([x_val_data.shape[0]], dtype=np.int32)
+    for i in range(0, x_val_data.shape[0]):
+        predictions[i] = sess.run(prediction,
+                                  feed_dict={x: x_val_data[i].reshape([1, NUMBER_DATA_CHANNELS, DATA_WINDOW_SIZE]),
+                                             y: y_val_data[i].reshape([1, NUMBER_CLASSES]), keep_prob: 1.0})
+        for c in range(0, NUMBER_CLASSES):
+            if y_val_data[i][c]:
+                y_val_tf[i] = c
+
+    tf_confusion_matrix = tf.confusion_matrix(labels=y_val_tf, predictions=predictions, num_classes=NUMBER_CLASSES)
+    print('Confusion Matrix: \n\n', tf.Tensor.eval(tf_confusion_matrix, feed_dict=None, session=None))
 
     # Get one sample and see what it outputs (Activations?) ?
     print('Extract & Analyze Maps:')

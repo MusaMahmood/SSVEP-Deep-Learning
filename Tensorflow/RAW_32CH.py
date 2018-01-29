@@ -21,18 +21,18 @@ from tensorflow.python.tools import optimize_for_inference_lib
 TIMESTAMP_START = datetime.datetime.fromtimestamp(time.time()).strftime('%Y%m%d_%H.%M.%S')
 VERSION_NUMBER = '32ch_psd_v0.2.0'
 DESCRIPTION_TRAINING_DATA = '_allset_'
-method = 'psd'
-# method = 'raw'
+# method = 'psd'
+method = 'raw'
 TOTAL_DATA_CHANNELS = 32
 if method == 'raw':
-    wlen = 1024
-    TRAINING_FOLDER_PATH = r'_data/my_data_32ch/S1_raw_decimate_wlen' + str(wlen)
+    wlen = 512
+    TRAINING_FOLDER_PATH = r'_data/my_data_32ch/raw/S4_raw_decimate_wlen' + str(wlen)
     DATA_WINDOW_SIZE = wlen
     DEFAULT_IMAGE_SHAPE = [DATA_WINDOW_SIZE, TOTAL_DATA_CHANNELS]
 else:
     wlen = 1024
     DATA_WINDOW_SIZE = wlen // 2
-    TRAINING_FOLDER_PATH = r'_data/my_data_32ch/S3_psd_decimate_wlen' + str(wlen)
+    TRAINING_FOLDER_PATH = r'_data/my_data_32ch/psd/S3_psd_decimate_wlen' + str(wlen)
     DEFAULT_IMAGE_SHAPE = [TOTAL_DATA_CHANNELS, DATA_WINDOW_SIZE]
 
 TEST_FOLDER_PATH = TRAINING_FOLDER_PATH + '/v'
@@ -51,7 +51,7 @@ SELECT_DATA_CHANNELS = np.asarray(range(1, 33))
 NUMBER_DATA_CHANNELS = SELECT_DATA_CHANNELS.shape[0]  # Selects first int in shape
 
 # FOR MODEL DESIGN
-NUMBER_STEPS = 10000
+NUMBER_STEPS = 100
 TRAIN_BATCH_SIZE = 64
 TEST_BATCH_SIZE = 64
 LEARNING_RATE = 1e-6  # 'Step size' on n-D optimization plane
@@ -65,16 +65,15 @@ MAX_POOL_STRIDE = [1, 2, 2, 1]
 BIAS_VAR_CL1 = 32  # # of Output channels (L1)
 BIAS_VAR_CL2 = 64  # # of Output channels (L2)
 
-WEIGHT_VAR_CL1 = [5, 5, 1, BIAS_VAR_CL1]  # [5, NUMBER_DATA_CHANNELS, 1, 32]
-WEIGHT_VAR_CL2 = [5, 5, BIAS_VAR_CL1, BIAS_VAR_CL2]  # [5, NUMBER_DATA_CHANNELS, 32, 64]
+WEIGHT_VAR_CL1 = [4, 4, 1, BIAS_VAR_CL1]  # [5, NUMBER_DATA_CHANNELS, 1, 32]
+WEIGHT_VAR_CL2 = [4, 4, BIAS_VAR_CL1, BIAS_VAR_CL2]  # [5, NUMBER_DATA_CHANNELS, 32, 64]
 
 BIAS_VAR_FC1 = [1024]
-WEIGHT_VAR_FC1 = [DATA_WINDOW_SIZE//4*NUMBER_DATA_CHANNELS//4*64, *BIAS_VAR_FC1]
+WEIGHT_VAR_FC1 = [DATA_WINDOW_SIZE // 4 * NUMBER_DATA_CHANNELS // 4 * 64, *BIAS_VAR_FC1]
 MAX_POOL_FLAT_SHAPE_FC1 = [-1, WEIGHT_VAR_FC1[0]]
 WEIGHT_VAR_FC_OUTPUT = [*BIAS_VAR_FC1, NUMBER_CLASSES]
 
 BIAS_VAR_FC_OUTPUT = [NUMBER_CLASSES]
-
 
 # Start Script Here:
 if not path.exists(EXPORT_DIRECTORY):
@@ -242,6 +241,8 @@ b_fco = bias_variable(BIAS_VAR_FC_OUTPUT)
 y_conv = tf.matmul(h_fc1_drop, W_fco) + b_fco
 outputs = tf.nn.softmax(y_conv, name=output_node_name)
 
+prediction = tf.argmax(outputs, 1)
+
 # training and reducing the cost/loss function
 cross_entropy = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=y, logits=y_conv))
 train_step = tf.train.AdamOptimizer(LEARNING_RATE).minimize(cross_entropy)
@@ -290,7 +291,7 @@ with tf.Session(config=config) as sess:
     # save model as pbtxt:
     tf.train.write_graph(sess.graph_def, EXPORT_DIRECTORY, MODEL_NAME + '.pbtxt', True)
 
-    loss_learning = np.zeros([NUMBER_STEPS//10], dtype=np.float64)
+    loss_learning = np.zeros([NUMBER_STEPS // 10], dtype=np.float64)
 
     for i in range(NUMBER_STEPS):
         offset = (i * TRAIN_BATCH_SIZE) % (x_train.shape[0] - TRAIN_BATCH_SIZE)
@@ -313,12 +314,24 @@ with tf.Session(config=config) as sess:
         train_step.run(feed_dict={x: batch_x_train, y: batch_y_train, keep_prob: TRAINING_KEEP_PROB})
 
     # Run test data (entire set) to see accuracy.
-    test_accuracy = sess.run(accuracy, feed_dict={x: x_test, y: y_test, keep_prob: 1.0})  # original
+    test_accuracy = sess.run(accuracy, feed_dict={x: x_test[0:128], y: y_test[0:128], keep_prob: 1.0})  # original
     print("\n Testing Accuracy:", test_accuracy, "\n\n")
 
     # Holdout Validation Accuracy:
-    print("Holdout Validation:", sess.run(accuracy, feed_dict={x: x_val_data, y: y_val_data,
-                                                               keep_prob: 1.0}))
+    print("Holdout Validation:", sess.run(accuracy, feed_dict={x: x_val_data, y: y_val_data, keep_prob: 1.0}))
+
+    y_val_tf = np.zeros([x_val_data.shape[0]], dtype=np.int32)
+    predictions = np.zeros([x_val_data.shape[0]], dtype=np.int32)
+    for i in range(0, x_val_data.shape[0]):
+        predictions[i] = sess.run(prediction,
+                                  feed_dict={x: x_val_data[i].reshape(INPUT_IMAGE_SHAPE),
+                                             y: y_val_data[i].reshape([1, NUMBER_CLASSES]), keep_prob: 1.0})
+        for c in range(0, NUMBER_CLASSES):
+            if y_val_data[i][c]:
+                y_val_tf[i] = c
+
+    tf_confusion_matrix = tf.confusion_matrix(labels=y_val_tf, predictions=predictions, num_classes=NUMBER_CLASSES)
+    print('Confusion Matrix: \n\n', tf.Tensor.eval(tf_confusion_matrix, feed_dict=None, session=None))
 
     print('Extract & Analyze Maps:')
     feature_map_folder_name = \
