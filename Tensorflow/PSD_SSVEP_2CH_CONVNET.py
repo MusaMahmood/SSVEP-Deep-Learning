@@ -20,11 +20,16 @@ from tensorflow.python.tools import optimize_for_inference_lib
 # CONSTANTS:
 TIMESTAMP_START = datetime.datetime.fromtimestamp(time.time()).strftime('%Y%m%d_%H.%M.%S')
 VERSION_NUMBER = 'v0.2.0'
-TRAINING_FOLDER_PATH = r'_data/my_data/S0_psd_256'
+win_len = 512
+# descriptor = 'hpf'
+descriptor = 'nofilt'
+feature = 'psd'
+subject_number = 5
+TRAINING_FOLDER_PATH = r'_data/my_data/' + descriptor + '/S' + str(subject_number) + '_psd_' + str(win_len)
 DESCRIPTION_TRAINING_DATA = 'PSD_S1_S2'
 TEST_FOLDER_PATH = TRAINING_FOLDER_PATH + '/v'
 EXPORT_DIRECTORY = 'model_exports/' + VERSION_NUMBER + '/'
-MODEL_NAME = 'ssvep_net_8ch'
+MODEL_NAME = 'ssvep_net_2ch' + '_S' + str(subject_number) + '_' + descriptor
 CHECKPOINT_FILE = EXPORT_DIRECTORY + MODEL_NAME + '.ckpt'
 
 # MATLAB DICT KEYS
@@ -32,11 +37,7 @@ KEY_X_DATA_DICTIONARY = 'relevant_data'
 KEY_Y_DATA_DICTIONARY = 'Y'
 
 # IMAGE SHAPE/CHARACTERISTICS
-# DATA_WINDOW_SIZE = 64
-# DATA_WINDOW_SIZE = 96
-DATA_WINDOW_SIZE = 128
-# DATA_WINDOW_SIZE = 192
-# DATA_WINDOW_SIZE = 256
+DATA_WINDOW_SIZE = win_len // 2
 NUMBER_CLASSES = 5
 TOTAL_DATA_CHANNELS = 2
 DEFAULT_IMAGE_SHAPE = [TOTAL_DATA_CHANNELS, DATA_WINDOW_SIZE]
@@ -46,17 +47,17 @@ NUMBER_DATA_CHANNELS = SELECT_DATA_CHANNELS.shape[0]  # Selects first int in sha
 
 # FOR MODEL DESIGN
 NUMBER_STEPS = 20000
-TRAIN_BATCH_SIZE = 256
+TRAIN_BATCH_SIZE = 512
 TEST_BATCH_SIZE = 100
 LEARNING_RATE = 1e-5  # 'Step size' on n-D optimization plane
 
 STRIDE_CONV2D = [1, 1, 1, 1]
 
-MAX_POOL1_K_SIZE = [1, 2, 1, 1]  # Kernel Size
+MAX_POOL1_K_SIZE = [1, 4, 4, 1]  # Kernel Size
 MAX_POOL1_STRIDE = [1, 2, 1, 1]  # Stride
 
-MAX_POOL2_K_SIZE = [1, 2, 1, 1]  # Kernel Size
-MAX_POOL2_STRIDE = [1, 2, 1, 1]  # Stride
+MAX_POOL2_K_SIZE = [1, 4, 4, 1]  # Kernel Size
+MAX_POOL2_STRIDE = [1, 1, 2, 1]  # Stride
 
 BIAS_VAR_CL1 = 32  # Number of kernel convolutions in h_conv1
 BIAS_VAR_CL2 = 64  # Number of kernel convolutions in h_conv2
@@ -69,8 +70,8 @@ else:
     else:
         DIVIDER = MAX_POOL1_STRIDE[2] + MAX_POOL2_STRIDE[2]
 
-WEIGHT_VAR_CL1 = [1, 1, 1, BIAS_VAR_CL1]  # # [filter_height, filter_width, in_channels, out_channels]
-WEIGHT_VAR_CL2 = [1, 1, BIAS_VAR_CL1, BIAS_VAR_CL2]  # # [filter_height, filter_width, in_channels, out_channels]
+WEIGHT_VAR_CL1 = [4, 4, 1, BIAS_VAR_CL1]  # # [filter_height, filter_width, in_channels, out_channels]
+WEIGHT_VAR_CL2 = [4, 4, BIAS_VAR_CL1, BIAS_VAR_CL2]  # # [filter_height, filter_width, in_channels, out_channels]
 
 WEIGHT_VAR_FC1 = [(DATA_WINDOW_SIZE // DIVIDER) * NUMBER_DATA_CHANNELS * BIAS_VAR_CL2, BIAS_VAR_CL1 ** 2]
 MAX_POOL_FLAT_SHAPE_FC1 = [-1, NUMBER_DATA_CHANNELS * (DATA_WINDOW_SIZE // DIVIDER) * BIAS_VAR_CL2]
@@ -248,6 +249,8 @@ b_fco = bias_variable(BIAS_VAR_FC_OUTPUT)
 y_conv = tf.matmul(h_fc1_drop, W_fco) + b_fco
 outputs = tf.nn.softmax(y_conv, name=output_node_name)
 
+prediction = tf.argmax(outputs, 1)
+
 # training and reducing the cost/loss function
 cross_entropy = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=y, logits=y_conv))
 train_step = tf.train.AdamOptimizer(LEARNING_RATE).minimize(cross_entropy)
@@ -323,24 +326,28 @@ with tf.Session(config=config) as sess:
     print("Holdout Validation:", sess.run(accuracy, feed_dict={x: x_val_data, y: y_val_data,
                                                                keep_prob: 1.0}))
 
+    y_val_tf = np.zeros([x_val_data.shape[0]], dtype=np.int32)
+    predictions = np.zeros([x_val_data.shape[0]], dtype=np.int32)
+    for i in range(0, x_val_data.shape[0]):
+        predictions[i] = sess.run(prediction,
+                                  feed_dict={x: x_val_data[i].reshape(INPUT_IMAGE_SHAPE),
+                                             y: y_val_data[i].reshape([1, NUMBER_CLASSES]), keep_prob: 1.0})
+        for c in range(0, NUMBER_CLASSES):
+            if y_val_data[i][c]:
+                y_val_tf[i] = c
+
+    tf_confusion_matrix = tf.confusion_matrix(labels=y_val_tf, predictions=predictions, num_classes=NUMBER_CLASSES)
+    print('Confusion Matrix: \n\n', tf.Tensor.eval(tf_confusion_matrix, feed_dict=None, session=None))
+
     # Get one sample and see what it outputs (Activations?) ?
     # image_output_folder_name = EXPORT_DIRECTORY + DESCRIPTION_TRAINING_DATA + TIMESTAMP_START + '/'
     feature_map_folder_name = EXPORT_DIRECTORY + 'feature_maps_' + TIMESTAMP_START + '_wlen' + str(DATA_WINDOW_SIZE) \
                               + '/'
     os.makedirs(feature_map_folder_name)
-    # user_input = input('Extract & Analyze Maps?')
-    # if user_input == "1" or user_input.lower() == "y":
-    # x_sample0 = x_val_data[0, :, :]
-    # weights = get_activations(h_conv1, x_sample0, INPUT_IMAGE_SHAPE, image_output_folder_name + 'h_conv1/',
-    #                           filename, sum_all=True)
 
     # Extract weights of following layers
     get_all_activations(x_val_data, feature_map_folder_name)
 
-    # print('weights', weights)
-    # Read from the tail of the arg-sort to find the n highest elements:
-    # weights_sorted = np.argsort(weights)[::-1]  # [:2] select last 2
-    # print('weights_sorted: ', weights_sorted)
 
     user_input = input('Export Current Model?')
     if user_input == "1" or user_input.lower() == "y":
