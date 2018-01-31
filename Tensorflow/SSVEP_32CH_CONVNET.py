@@ -33,7 +33,7 @@ MODEL_NAME = 'ssvep_net_32ch'
 CHECKPOINT_FILE = EXPORT_DIRECTORY + MODEL_NAME + '.ckpt'
 NUMBER_CLASSES = 5
 KEY_DATA_DICTIONARY = 'relevant_data'
-NUMBER_STEPS = 500
+NUMBER_STEPS = 250
 TRAIN_BATCH_SIZE = 100
 TEST_BATCH_SIZE = 64
 DATA_WINDOW_SIZE = 300
@@ -143,6 +143,11 @@ def export_model(input_node_names, output_node_name_internal):
 
 
 # Model Building Macros: #
+def named_weight_variable(shape, name):
+    initial = tf.truncated_normal(shape, stddev=0.1)
+    return tf.Variable(initial, name)
+
+
 def weight_variable(shape):
     initial = tf.truncated_normal(shape, stddev=0.1)
     return tf.Variable(initial)
@@ -340,7 +345,12 @@ with tf.Session(config=config) as sess:
     # Read from the tail of the argsort to find the n highest elements:
     weights_sorted = np.argsort(weights)[::-1]  # [:2] select last 2
     print('weights_sorted: ', weights_sorted)
-    # TODO: Retrain with selected weights (4, then 2):
+
+    w_conv_array = sess.run(W_conv1)
+    print('W_conv1.shape', w_conv_array.shape)
+    fn_out = image_output_folder_name + 'all_activations.mat'
+    os.makedirs(image_output_folder_name)
+    savemat(fn_out, mdict={'W_conv1': w_conv_array})
 
     # user_input = input('Export Current Model?')
     # if user_input == "1" or user_input.lower() == "y":
