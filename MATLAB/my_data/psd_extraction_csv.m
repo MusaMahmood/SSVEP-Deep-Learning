@@ -1,16 +1,24 @@
 %% PSD Extraction:
 clear; close all; clc;
 % d = dir([pwd '\S*.csv']);
-Subject = 'S0_2ch\';
-% Subject = '2018-01-05-rob\';
-d = dir([Subject 'S*.csv']);
-output_dir = ['output_dir\psd\' Subject];
-mkdir(output_dir); PLOT = 0;
-Fs = 250; h = 1/Fs;
-select_chs = 1:2;
-start = 1; whop = 32; wlen = 256;
+% Subject = '2017-07-14-Matt\'; S_num = 'S0';
+% Subject = '2018-01-05-Rob\'; S_num = 'S1';
+% Subject = '2018-01-05-SJ\'; S_num = 'S2';
+% Subject = '2018-01-25-Ben\'; S_num = 'S3';
+Subject = '2018-01-29-Nathan\'; S_num = 'S4';
+% Subject = '2018-01-29-Andrew\'; S_num = 'S5';
+d = dir([Subject 'S*.csv']); PLOT = 0; FILT = 1;
+Fs = 250; h = 1/Fs; select_chs = 1:2;
+start = 1; whop = 32; wlen = 384;
 [b, a] = butter(3, 1.33*2/Fs, 'high');
-for f = 1%:length(d)
+if FILT
+    output_dir = ['output_dir\' S_num '_hpf_psd_' num2str(wlen) '\'];
+    fn = '_hpf_psd_wlen_';
+else
+    output_dir = ['output_dir\' S_num '_psd_' num2str(wlen) '\'];
+    fn = '_nofilt_psd_wlen_';
+end
+for f = 1:length(d)
     filename = d(f).name; 
     data = csvread([Subject filename]);
     wStart = start:whop:(length(data)-wlen); wEnd = wStart + wlen - 1;
@@ -22,7 +30,8 @@ for f = 1%:length(d)
         if sum(selected_window(:, 3) == selected_window(1, 3)) == wlen
             CLASS = selected_window(1, 3)
             Y(w) = selected_window(1, 3);
-            sample = filtfilt(b,a,selected_window(:,select_chs));
+            sample_filtered = filtfilt(b,a,selected_window(:,select_chs));
+            %{
             if wlen == 256
                 temp_4 = tf_psd_rescale_w256(sample);
             elseif wlen == 384
@@ -30,30 +39,26 @@ for f = 1%:length(d)
             elseif wlen == 512
                 temp_4 = tf_psd_rescale_w512(selected_window(:,select_chs));
             end
+            %}
             for ch = 1:length(select_chs)
-                [P(w, ch, :), F] = welch_estimator_ORIG(selected_window(:,ch), Fs, hann(wlen)); %pass unfiltered
+                if (FILT)
+                    [P(w, ch, :), F] = welch_estimator_ORIG(sample_filtered(:,ch), Fs, hann(wlen)); %pass unfiltered
+                else
+                    [P(w, ch, :), F] = welch_estimator_ORIG(selected_window(:,ch), Fs, hann(wlen)); %pass unfiltered
+                end
                 P(w, ch, :) = rescale_minmax(P(w, ch, :)); % rescale on a per-channel basis
             end
             relevant_data(w, :, :) = P(w, :, :); 
-             %reshape(P(w, :, :), [size(P,2), size(P,3)])';
-%             sample_conv = conv(sample(:,1), sample(:,2));
-            if (PLOT && CLASS == 2)
-%                 figure(1); subplot(1,2,1); plot_imagesc(F, sample);
-%                 subplot(1,2,2); plot_imagesc(F, sample_conv(1:length(F))); xlim([0 1])
-%                 figure(2);
-%                 subplot(1,2,1); plot(F, sample);
-%                 subplot(1,2,2); plot(F, sample_conv(1:length(F)));
-                plot(0:h:256*h-h,sample); xlim([0, 1.0]); ylim([-2.5E-4, 2.5E-4])
-                xlabel('Time, s'); ylabel('V'); figure;
-                plot_imagesc(temp_4);
-                %plot(F, temp_4); xlim([5, 40]);
+            if (PLOT)
+                figure(1); subplot(1,2,1); plot_imagesc(F, squeeze(P2(w, :, :))');
+                subplot(1,2,2); plot_imagesc(F, squeeze(P(w, :, :))'); 
                 rgb = input('Continue? \n');
             end
         end
     end         
-%     mkdir([output_dir]);
-%     f_n = [output_dir, filename(1:end-4), '_nofilt_psd_wlen_' num2str(wlen) '.mat'];
-%     save(f_n, 'relevant_data', 'Y');
+    mkdir([output_dir]);
+    f_n = [output_dir, filename(1:end-4) fn num2str(wlen) '.mat'];
+    save(f_n, 'relevant_data', 'Y');
     clear Y
 end
 

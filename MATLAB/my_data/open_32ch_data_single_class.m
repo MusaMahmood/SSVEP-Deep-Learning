@@ -1,19 +1,21 @@
 % % 10s single class files
 clear;clc;close all;
-DIR = 'S1\'; CLASS_LOC = 8; DECIM = true;
+% DIR = 'S1\'; CLASS_LOC = 8; DECIM = true;
 % DIR = 'S2\'; CLASS_LOC = 7; DECIM = true;
 % DIR = 'S3\'; CLASS_LOC = 7; DECIM = false; 
+DIR = 'S4\'; CLASS_LOC = 7; DECIM = false; 
+% DIR = 'S5\'; CLASS_LOC = 7; DECIM = false; 
 EXT = '.bdf';
 addpath('C:\Users\Musa Mahmood\Dropbox (GaTech)\YeoLab\_SSVEP\_MATLAB-SSVEP-Classification\plugins\Biosig3.3.0\biosig\eeglab');
 x = fileparts( which('sopen') );
 rmpath(x);
 addpath(x,'-begin'); PLOT = 0;
-KEEP_ELECTRODES = 1:32; start = 1; whop = 32; wlen = 256;
+KEEP_ELECTRODES = 1:32; start = 1; whop = 32; wlen = 1024;
 [ALLEEG, EEG, CURRENTSET, ALLCOM] = eeglab;
 files = dir([DIR '*' EXT]);
 w = 1; relevant_data_all = []; Y_all = [];
 [b, a] = butter(3, 4.9*2/512, 'high');
-OUTPUT_DIR = [DIR(1:end-1) '_psd_decimate_wlen', num2str(wlen) '\'];
+OUTPUT_DIR = ['output_dir\psd\' DIR(1:end-1) '_psd_wlen', num2str(wlen) '\'];
 for f = 1:length(files)
     filename = files(f).name
     class = filename(CLASS_LOC)
@@ -47,8 +49,8 @@ for f = 1:length(files)
         sample = reshape(P(w, :, :), [size(P,2), size(P,3)])';
 %         sample_conv = conv(sample(:,15), sample(:,17));
         if (PLOT)
-            figure(2); subplot(1,2,1); plot_imagesc(F, sample);
-            subplot(1,2,2); plot_imagesc(F, sample_conv(1:length(F))); xlim([0 1])
+            figure(2); plot_imagesc(F, sample);
+%             subplot(1,2,2); plot_imagesc(F, sample_conv(1:length(F))); xlim([0 1])
             figure(3);
             subplot(1,2,1); plot(F, sample);
             rgb = input('Continue? \n');
