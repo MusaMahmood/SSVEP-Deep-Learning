@@ -21,11 +21,15 @@ from tensorflow.python.tools import optimize_for_inference_lib
 TIMESTAMP_START = datetime.datetime.fromtimestamp(time.time()).strftime('%Y%m%d_%H.%M.%S')
 VERSION_NUMBER = 'v0.2.0'
 win_len = 512
-# descriptor = 'hpf'
-descriptor = 'nofilt'
+descriptor = 'hpf'
+# descriptor = 'nofilt'
 feature = 'psd'
 subject_number = 5
-TRAINING_FOLDER_PATH = r'_data/my_data/' + descriptor + '/S' + str(subject_number) + '_psd_' + str(win_len)
+if descriptor == 'nofilt':
+    folder_name = '/S' + str(subject_number) + '_psd_' + str(win_len)
+else:
+    folder_name = '/S' + str(subject_number) + '_' + descriptor + '_psd_' + str(win_len)
+TRAINING_FOLDER_PATH = r'_data/my_data/' + descriptor + folder_name
 DESCRIPTION_TRAINING_DATA = 'PSD_S1_S2'
 TEST_FOLDER_PATH = TRAINING_FOLDER_PATH + '/v'
 EXPORT_DIRECTORY = 'model_exports/' + VERSION_NUMBER + '/'
@@ -46,7 +50,7 @@ SELECT_DATA_CHANNELS = np.asarray(range(1, 3))
 NUMBER_DATA_CHANNELS = SELECT_DATA_CHANNELS.shape[0]  # Selects first int in shape
 
 # FOR MODEL DESIGN
-NUMBER_STEPS = 20000
+NUMBER_STEPS = 10000
 TRAIN_BATCH_SIZE = 512
 TEST_BATCH_SIZE = 100
 LEARNING_RATE = 1e-5  # 'Step size' on n-D optimization plane
@@ -174,7 +178,7 @@ def get_activations_mat(layer, input_val, shape):
     return units
 
 
-def get_all_activations(training_data, folder_name):
+def get_all_activations(training_data, folder_name0):
     w_hconv1 = np.empty([0, *h_conv1_shape[1:]], np.float32)
     w_hpool1 = np.empty([0, *h_pool1_shape[1:]], np.float32)
     w_hconv2 = np.empty([0, *h_conv2_shape[1:]], np.float32)
@@ -198,7 +202,7 @@ def get_all_activations(training_data, folder_name):
         w_hfc1_do = np.concatenate((w_hfc1_do, get_activations_mat(h_fc1_drop, sample, INPUT_IMAGE_SHAPE)), axis=0)
         w_y_out = np.concatenate((w_y_out, get_activations_mat(y_conv, sample, INPUT_IMAGE_SHAPE)), axis=0)
         # Save all activations:
-    fn_out = folder_name + 'all_activations.mat'
+    fn_out = folder_name0 + 'all_activations.mat'
     savemat(fn_out, mdict={'input_sample': training_data, 'h_conv1': w_hconv1, 'h_conv2': w_hconv2,
                            'h_pool1': w_hpool1,
                            'h_pool2': w_hpool2,
@@ -238,7 +242,7 @@ h_pool2_flat = tf.reshape(h_pool2, MAX_POOL_FLAT_SHAPE_FC1)
 W_fc1 = weight_variable(WEIGHT_VAR_FC1)
 b_fc1 = bias_variable(BIAS_VAR_FC1)
 
-h_fc1 = tf.nn.relu(tf.matmul(h_pool2_flat, W_fc1) + b_fc1)
+h_fc1 = tf.nn.relu(tf.add(tf.matmul(h_pool2_flat, W_fc1), b_fc1))
 
 h_fc1_drop = tf.nn.dropout(h_fc1, keep_prob)
 
@@ -246,7 +250,7 @@ h_fc1_drop = tf.nn.dropout(h_fc1, keep_prob)
 W_fco = weight_variable(WEIGHT_VAR_FC_OUTPUT)
 b_fco = bias_variable(BIAS_VAR_FC_OUTPUT)
 
-y_conv = tf.matmul(h_fc1_drop, W_fco) + b_fco
+y_conv = tf.add(tf.matmul(h_fc1_drop, W_fco), b_fco)
 outputs = tf.nn.softmax(y_conv, name=output_node_name)
 
 prediction = tf.argmax(outputs, 1)
@@ -340,14 +344,12 @@ with tf.Session(config=config) as sess:
     print('Confusion Matrix: \n\n', tf.Tensor.eval(tf_confusion_matrix, feed_dict=None, session=None))
 
     # Get one sample and see what it outputs (Activations?) ?
-    # image_output_folder_name = EXPORT_DIRECTORY + DESCRIPTION_TRAINING_DATA + TIMESTAMP_START + '/'
-    feature_map_folder_name = EXPORT_DIRECTORY + 'feature_maps_' + TIMESTAMP_START + '_wlen' + str(DATA_WINDOW_SIZE) \
-                              + '/'
+    feature_map_folder_name = \
+        EXPORT_DIRECTORY + 'feature_maps_' + TIMESTAMP_START + '_wlen' + str(DATA_WINDOW_SIZE) + '/'
     os.makedirs(feature_map_folder_name)
 
     # Extract weights of following layers
     get_all_activations(x_val_data, feature_map_folder_name)
-
 
     user_input = input('Export Current Model?')
     if user_input == "1" or user_input.lower() == "y":
