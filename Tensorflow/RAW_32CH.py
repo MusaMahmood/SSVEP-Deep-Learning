@@ -25,14 +25,16 @@ DESCRIPTION_TRAINING_DATA = '_allset_'
 method = 'raw'
 TOTAL_DATA_CHANNELS = 32
 if method == 'raw':
-    wlen = 512
-    TRAINING_FOLDER_PATH = r'_data/my_data_32ch/raw/S4_raw_decimate_wlen' + str(wlen)
+    wlen = 256
+    subj = 'S1_raw_decimate_wlen'
+    TRAINING_FOLDER_PATH = r'_data/my_data_32ch/raw/' + subj + str(wlen)
     DATA_WINDOW_SIZE = wlen
     DEFAULT_IMAGE_SHAPE = [DATA_WINDOW_SIZE, TOTAL_DATA_CHANNELS]
 else:
     wlen = 1024
+    subj = 'S3_psd_decimate_wlen'
     DATA_WINDOW_SIZE = wlen // 2
-    TRAINING_FOLDER_PATH = r'_data/my_data_32ch/psd/S3_psd_decimate_wlen' + str(wlen)
+    TRAINING_FOLDER_PATH = r'_data/my_data_32ch/psd/' + subj + str(wlen)
     DEFAULT_IMAGE_SHAPE = [TOTAL_DATA_CHANNELS, DATA_WINDOW_SIZE]
 
 TEST_FOLDER_PATH = TRAINING_FOLDER_PATH + '/v'
@@ -51,7 +53,7 @@ SELECT_DATA_CHANNELS = np.asarray(range(1, 33))
 NUMBER_DATA_CHANNELS = SELECT_DATA_CHANNELS.shape[0]  # Selects first int in shape
 
 # FOR MODEL DESIGN
-NUMBER_STEPS = 100
+NUMBER_STEPS = 10000
 TRAIN_BATCH_SIZE = 64
 TEST_BATCH_SIZE = 64
 LEARNING_RATE = 1e-6  # 'Step size' on n-D optimization plane
@@ -59,7 +61,7 @@ TRAINING_KEEP_PROB = 0.5
 
 STRIDE_CONV2D = [1, 1, 1, 1]
 
-MAX_POOL_K_SIZE = [1, 5, 5, 1]
+MAX_POOL_K_SIZE = [1, 2, 2, 1]
 MAX_POOL_STRIDE = [1, 2, 2, 1]
 
 BIAS_VAR_CL1 = 32  # # of Output channels (L1)
@@ -335,7 +337,7 @@ with tf.Session(config=config) as sess:
 
     print('Extract & Analyze Maps:')
     feature_map_folder_name = \
-        EXPORT_DIRECTORY + 'feature_maps_' + TIMESTAMP_START + '_wlen' + str(DATA_WINDOW_SIZE) + '/'
+        EXPORT_DIRECTORY + 'feature_maps_' + subj + '_' + TIMESTAMP_START + '_wlen' + str(DATA_WINDOW_SIZE) + '/'
     os.makedirs(feature_map_folder_name)
     get_all_activations(x_val_data, feature_map_folder_name)
 
